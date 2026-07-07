@@ -38,6 +38,7 @@ namespace desknest {
 
 struct StateSnapshot {
     SystemState      system;
+    FaceSubState     face_state = FACE_STATE_UP;   // 显式翻面子状态
     OrientationState orientation;
     UIPage           page;
     RotationLock     rotLock;

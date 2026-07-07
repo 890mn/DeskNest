@@ -59,13 +59,14 @@ UIPage StateMachine::prevLandscape(UIPage p) {
 
 void StateMachine::begin() {
     _s.system        = SYSTEM_ACTIVE;
+    _s.face_state    = FACE_STATE_UP;        // 显式：开机默认 face_up
     _s.orientation   = ORIENTATION_PORTRAIT;
     _s.page          = PAGE_PORTRAIT_OVERVIEW;
     _s.rotLock       = ROT_AUTO;
     _s.lastInputMs   = millis();
     _temp_unlock_expire_ms = 0;
 
-    Serial.println("[D][STATE] begin → SYSTEM_ACTIVE / PORTRAIT / OVERVIEW");
+    Serial.println("[D][STATE] begin → FACE_UP / ACTIVE / PORTRAIT / OVERVIEW");
 }
 
 // ============================================================================
@@ -79,6 +80,7 @@ void StateMachine::begin() {
 void StateMachine::applyFace_(GestureEvent face, uint32_t now_ms) {
     if (face == GESTURE_FACE_DOWN) {
         _s.pre_face_down_page = _s.page;
+        _s.face_state = FACE_STATE_DOWN;
         _s.orientation = ORIENTATION_FACE_DOWN;
         _s.system      = SYSTEM_FACE_DOWN_SLEEP;
         _s.page        = PAGE_SLEEP_FACE_DOWN;
@@ -87,6 +89,7 @@ void StateMachine::applyFace_(GestureEvent face, uint32_t now_ms) {
         return;
     }
     if (face == GESTURE_FACE_UP_OPEN) {
+        _s.face_state = FACE_STATE_UP;
         _s.system = SYSTEM_ACTIVE;
         _s.page   = _s.pre_face_down_page;
         _s.lastInputMs = now_ms;
@@ -104,8 +107,8 @@ void StateMachine::updateFace(GestureEvent face, uint32_t now_ms) {
 
 #if ENABLE_GESTURE_INPUT
 void StateMachine::updateGesture(GestureEvent g, uint32_t now_ms) {
-    // face-down 屏蔽手势
-    if (_s.system == SYSTEM_FACE_DOWN_SLEEP) return;
+    // 层级 gate：face_down 时所有手势输入都屏蔽
+    if (_s.face_state == FACE_STATE_DOWN) return;
     if (g == GESTURE_NONE) return;
     applyGesture_(g, now_ms);
 }
@@ -113,10 +116,11 @@ void StateMachine::updateGesture(GestureEvent g, uint32_t now_ms) {
 
 #if ENABLE_BUTTON_INPUT
 void StateMachine::updateButton(ButtonEvent b, uint32_t now_ms) {
-    // face-down 时：吞掉所有按键（除 FACTORY）
-    if (_s.system == SYSTEM_FACE_DOWN_SLEEP) {
+    // 层级 gate：face_down 时吞掉所有按键（除 FACTORY）
+    if (_s.face_state == FACE_STATE_DOWN) {
         if (b == BUTTON_FACTORY) {
             Serial.println("[D][STATE] factory reset triggered from face-down");
+            _s.face_state = FACE_STATE_UP;
             _s.system = SYSTEM_ACTIVE;
             _s.orientation = g_gesture.orientation();
             _s.page = PAGE_PORTRAIT_SETTINGS;
@@ -131,7 +135,8 @@ void StateMachine::updateButton(ButtonEvent b, uint32_t now_ms) {
 
 #if ENABLE_ORIENTATION_INPUT
 void StateMachine::updateOrientation(OrientationState detected, uint32_t now_ms) {
-    if (_s.system == SYSTEM_FACE_DOWN_SLEEP) return;  // face-down 屏蔽
+    // 层级 gate：face_down 时跳过朝向检测（face 优先）
+    if (_s.face_state == FACE_STATE_DOWN) return;
     applyOrientation_(detected, now_ms);
 }
 #endif

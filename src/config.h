@@ -67,11 +67,18 @@ namespace pins {
 // 1) 系统运行状态
 enum SystemState : uint8_t {
     SYSTEM_BOOT = 0,              // 启动中
+    SYSTEM_IDLE,                  // 新增：每帧处理前都是这个起点（每路输入独立从 IDLE 出发）
     SYSTEM_ACTIVE,                // 正常运行
     SYSTEM_AMBIENT,               // 30s 无操作，背光 30%
     SYSTEM_LIGHT_SLEEP,           // 90s 无操作，light-sleep
     SYSTEM_FACE_DOWN_SLEEP,       // 翻面栖息（核心差异化）
     SYSTEM_CONFIG,                // 配网页面
+};
+
+// 1.5) 翻面子状态（显式区分 face_up / face_down，独立于 system 状态）
+enum FaceSubState : uint8_t {
+    FACE_STATE_UP   = 0,          // 设备正面朝上（默认）—— 可以处理朝向/页面
+    FACE_STATE_DOWN = 1,          // 设备翻面朝下 —— roost 模式，屏蔽大部分输入
 };
 
 // 2) 设备姿态
