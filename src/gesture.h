@@ -110,6 +110,7 @@ struct GestureTuning {
     float    shake_threshold;         // 200ms 窗口内 |a| 峰值 > 此值（默认 1.5g）
     uint16_t shake_window_ms;         // 摇动峰值跟踪窗口（默认 200ms）
     uint16_t shake_cooldown_ms;       // 两次摇动最小间隔（默认 600ms）
+    uint8_t  shake_invert;            // 方向反转（K10 BSP 坐标方向不一致时用）
 
     // Tap
     float    tap_z_high;              // 当前 az > 此值（默认 1.2g）

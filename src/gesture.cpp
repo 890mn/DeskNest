@@ -33,6 +33,7 @@ GestureTuning g_tuning = {
                                                                // 新版用零交叉 + 峰值，0.8g 已能区分"真摇动"和噪声
     .shake_window_ms     = 300,                               // 略放宽窗口到 300ms 容下 3-4 次摆
     .shake_cooldown_ms   = defaults::T_SHAKE_COOLDOWN_MS,    // 600
+    .shake_invert        = 0,                                 // 0 = 约定 ax>0 → LEFT；1 = 反转
     // Tap
     .tap_z_high          = 1.2f,
     .tap_z_low           = 1.1f,
@@ -137,15 +138,15 @@ GestureEvent GestureEngine::detectShake_(float ax, uint32_t now_ms) {
     // 6) 触发
     //   方向语义：用户先动 → 反方向拉回 = 一次完整摇动
     //   方向 = 第一帧 ax 的符号（用户初始移动方向）
-    //   - ax[0] > 0  → GESTURE_SHAKE_LEFT  (约定：正 ax 对应"左")
-    //   - ax[0] < 0  → GESTURE_SHAKE_RIGHT
-    //   真机如果方向反了，wizard 会把 first_ax 显示出来，用户可以
-    //   通过 g_tuning.shake_invert 或者改这里调整。
+    //   - 默认 ax[0] > 0  → SHAKE_LEFT；  ax[0] < 0 → SHAKE_RIGHT
+    //   - shake_invert = 1 时方向反转（K10 BSP 坐标不一致时用）
     _last_shake_ms  = now_ms;
     _shake_filled   = false;
     _shake_idx      = 0;       // 准备下一窗
     _peak_abs_accel = peak;
-    return (_shake_ax_buf[0] > 0.0f) ? GESTURE_SHAKE_LEFT : GESTURE_SHAKE_RIGHT;
+    const bool first_positive = (_shake_ax_buf[0] > 0.0f);
+    const bool go_left = (first_positive != (g_tuning.shake_invert != 0));
+    return go_left ? GESTURE_SHAKE_LEFT : GESTURE_SHAKE_RIGHT;
 }
 
 bool GestureEngine::detectTap_(const AccelReading& acc, uint32_t now_ms) {

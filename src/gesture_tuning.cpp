@@ -84,7 +84,7 @@ static const GestureStep STEPS[] = {
       GESTURE_SHAKE_LEFT,            // 也接受 _RIGHT
       2000,
       "朝一个方向快速移动，再反方向拉回（一次完整动作）；方向 = 第一次动的方向",
-      { "shake", "shake_cd" }, 2 },
+      { "shake", "shake_cd", "shake_invert" }, 3 },
 
     { "tap",
       GESTURE_TAP,
@@ -166,6 +166,7 @@ static bool findField(const char* name, fieldref::Ref& ref) {
     if (!strcmp(name, "rotate"))      { ref.kind = fieldref::F_FLOAT; ref.p.f = &g_tuning.rotate_threshold;      return true; }
     if (!strcmp(name, "rotate_amb"))  { ref.kind = fieldref::F_FLOAT; ref.p.f = &g_tuning.rotate_amb;            return true; }
     if (!strcmp(name, "shake"))       { ref.kind = fieldref::F_FLOAT; ref.p.f = &g_tuning.shake_threshold;       return true; }
+    if (!strcmp(name, "shake_invert")) { ref.kind = fieldref::F_U8;   ref.p.b = &g_tuning.shake_invert;          return true; }
     if (!strcmp(name, "tap_high"))    { ref.kind = fieldref::F_FLOAT; ref.p.f = &g_tuning.tap_z_high;            return true; }
     if (!strcmp(name, "tap_low"))     { ref.kind = fieldref::F_FLOAT; ref.p.f = &g_tuning.tap_z_low;             return true; }
     if (!strcmp(name, "face_dn_ms"))  { ref.kind = fieldref::F_U16;   ref.p.u = &g_tuning.face_down_stable_ms;   return true; }
@@ -232,6 +233,8 @@ static void printShow() {
     Serial.printf("  rotate_cd  = %u\n",        g_tuning.rotate_cooldown_ms);
     Serial.printf("  shake      = %+.3f g\n",  g_tuning.shake_threshold);
     Serial.printf("  shake_cd   = %u\n",        g_tuning.shake_cooldown_ms);
+    Serial.printf("  shake_inv  = %u  (%s)\n",  g_tuning.shake_invert,
+                  g_tuning.shake_invert ? "inverted" : "default ax>0 → LEFT");
     Serial.printf("  tap_high   = %+.3f g\n",  g_tuning.tap_z_high);
     Serial.printf("  tap_low    = %+.3f g\n",  g_tuning.tap_z_low);
     Serial.printf("  tap_cd     = %u\n",        g_tuning.tap_cooldown_ms);
@@ -306,6 +309,7 @@ static void cmdReset() {
     g_tuning.shake_threshold     = defaults::G_SHAKE_THRESHOLD;
     g_tuning.shake_window_ms     = 200;
     g_tuning.shake_cooldown_ms   = defaults::T_SHAKE_COOLDOWN_MS;
+    g_tuning.shake_invert        = 0;
     g_tuning.tap_z_high          = 1.2f;
     g_tuning.tap_z_low           = 1.1f;
     g_tuning.tap_cooldown_ms     = 300;
