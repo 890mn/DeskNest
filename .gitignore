@@ -3,6 +3,8 @@
 DeskNest.ino.cpp
 # .vscode is machine-local editor state — keep out of VCS
 .vscode/
+__pycache__/
+*.pyc
 
 # Machine-local Claude permissions — keep out of VCS
 .claude/settings.local.json

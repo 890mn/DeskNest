@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DeskNest 手势调试台</title>
+<style>
+:root{color-scheme:dark;--bg:#0a0e14;--panel:#111822;--line:#263244;--text:#d7e0ea;--muted:#7f91a8;--cyan:#42d3ff;--green:#69db9c;--amber:#ffbd66;--red:#ff7272}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:13px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace;padding-bottom:62px}.top{position:sticky;top:0;z-index:3;display:flex;justify-content:space-between;align-items:center;padding:12px 18px;background:#0d131cdd;border-bottom:1px solid var(--line);backdrop-filter:blur(8px)}h1{font:600 16px system-ui;margin:0}.status{display:flex;gap:8px;align-items:center}.dot{width:9px;height:9px;border-radius:50%;background:var(--red)}.dot.on{background:var(--green);box-shadow:0 0 10px var(--green)}main{display:grid;grid-template-columns:minmax(0,2fr) minmax(300px,1fr);gap:12px;padding:12px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}.panel h2{font:600 12px system-ui;letter-spacing:.08em;text-transform:uppercase;margin:0;padding:9px 12px;border-bottom:1px solid var(--line);color:var(--muted)}.cards{display:grid;grid-template-columns:repeat(4,minmax(105px,1fr));gap:8px;padding:10px}.card{background:#0b1119;border:1px solid #202c3c;border-radius:8px;padding:9px}.label{color:var(--muted);font-size:11px}.value{font-size:20px;color:var(--cyan);margin-top:2px}.unit{font-size:11px;color:var(--muted)}.phase{color:var(--amber)}.params{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line)}.param{background:var(--panel);padding:9px 11px}.param b{display:block;color:var(--cyan);font-size:15px}.logs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px}.log{height:210px;overflow:auto;padding:8px 10px}.row{display:grid;grid-template-columns:54px 1fr auto;gap:8px;padding:4px 0;border-bottom:1px solid #17202c}.time,.count{color:var(--muted)}pre{white-space:pre-wrap;margin:0;padding:10px;max-height:310px;overflow:auto;color:#b9c6d6}.side{display:grid;gap:12px;align-content:start}.terminal{position:fixed;z-index:4;left:0;right:0;bottom:0;background:#0d131cf2;border-top:1px solid var(--line);padding:10px 14px;display:flex;gap:8px}.terminal input{flex:1;background:#080c12;color:var(--text);border:1px solid #35455c;border-radius:7px;padding:10px 12px;font:inherit}.terminal button{background:#17384a;color:var(--cyan);border:1px solid #286079;border-radius:7px;padding:0 18px}.hint{padding:8px 11px;color:var(--muted);border-top:1px solid var(--line)}@media(max-width:900px){main{grid-template-columns:1fr}.cards{grid-template-columns:repeat(2,1fr)}.logs{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header class="top"><h1>DeskNest · 手势调试台</h1><div class="status"><span id="dot" class="dot"></span><span id="conn">未连接</span></div></header>
+<main>
+<section>
+  <div class="panel"><h2>三轴加速度 · 实时</h2><div class="cards">
+    <div class="card"><div class="label">AX</div><div class="value" id="ax">--</div><span class="unit">g</span></div>
+    <div class="card"><div class="label">AY</div><div class="value" id="ay">--</div><span class="unit">g</span></div>
+    <div class="card"><div class="label">AZ</div><div class="value" id="az">--</div><span class="unit">g</span></div>
+    <div class="card"><div class="label">|A|</div><div class="value" id="mag">--</div><span class="unit">g</span></div>
+    <div class="card"><div class="label">静态基线 X</div><div class="value" id="base">--</div><span class="unit">g</span></div>
+    <div class="card"><div class="label">相对运动 X</div><div class="value" id="motion">--</div><span class="unit">g</span></div>
+    <div class="card"><div class="label">摇动阶段</div><div class="value phase" id="phase">--</div></div>
+    <div class="card"><div class="label">方向 / 事件</div><div class="value phase" id="direction">--</div><div class="unit" id="event">--</div></div>
+  </div></div>
+  <div class="panel" style="margin-top:12px"><h2>摇动判定参数</h2><div class="params" id="params"></div></div>
+  <div class="logs">
+    <div class="panel"><h2>State</h2><div class="log" id="log-state"></div></div>
+    <div class="panel"><h2>Input</h2><div class="log" id="log-input"></div></div>
+    <div class="panel"><h2>Gesture</h2><div class="log" id="log-gesture"></div></div>
+    <div class="panel"><h2>Sensor / Other</h2><div class="log" id="log-other"></div></div>
+  </div>
+</section>
+<aside class="side">
+  <div class="panel"><h2>Show · 当前参数</h2><pre id="show">等待设备数据…</pre></div>
+  <div class="panel"><h2>Help · 固定参考</h2><pre>show                     查看当前阈值
+set shake 0.55           启动峰值门槛
+set shake_return 0.35    反向峰值门槛(g)
+set shake_settle 0.16    回稳门槛(g)
+set shake_window 650     完整动作时限(ms)
+set shake_cd 450         翻页冷却(ms)
+set shake_invert 0       左右映射 0/1
+test                     进入校准向导
+next / prev / redo       切换或重录
+record / stop            开关 20Hz 遥测
+state                    查看当前状态
+verbose 0|1              开关 1Hz 状态流
+help                     串口完整帮助</pre></div>
+  <div class="panel"><h2>判定链</h2><pre>IDLE
+  ↓ |motion| ≥ shake
+OUTBOUND   动画 35%
+  ↓ 反向 ≥ ret
+RETURNING  动画 70%
+  ↓ |motion| ≤ settle × 3帧
+触发 LEFT / RIGHT</pre><div class="hint">动画有、翻页少时重点观察 motion 是否回到 settle 内。</div></div>
+</aside>
+</main>
+<form class="terminal" id="terminal"><input id="command" autocomplete="off" placeholder="输入命令，例如：set shake 0.50"><button>发送</button></form>
+<script>
+const $=id=>document.getElementById(id), fmt=v=>typeof v==='number'?v.toFixed(3):'--';
+const paramDefs=[['shake','启动门槛','g'],['ret','反向门槛','g'],['settle','回稳门槛','g'],['win','动作时限','ms'],['cd','冷却','ms'],['inv','左右反转','0/1']];
+function renderLog(id,items){$(id).innerHTML=(items||[]).slice(-60).reverse().map(x=>`<div class="row"><span class="time">${x.time}</span><span>${escapeHtml(x.text)}</span><span class="count">${x.count>1?'×'+x.count:''}</span></div>`).join('')}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function render(d){$('dot').classList.toggle('on',d.connected);$('conn').textContent=d.connected?`已连接 ${d.serial_port}`:'串口未连接';let t=d.telemetry||{};for(let k of ['ax','ay','az','mag','base','motion'])$(k).textContent=fmt(t[k]);$('phase').textContent=t.phase||'--';$('direction').textContent=t.dir||'--';$('event').textContent=`event=${t.event||'--'} · orient=${t.orient||'--'}`;$('params').innerHTML=paramDefs.map(([k,n,u])=>`<div class="param"><span class="label">${n}</span><b>${t[k]??'--'} <small>${u}</small></b></div>`).join('');let liveShow=paramDefs.map(([k,n,u])=>`${k.padEnd(8)} = ${String(t[k]??'--').padEnd(7)} ${u}  ${n}`);$('show').textContent=(d.show?.length?d.show:liveShow).join('\n');renderLog('log-state',d.logs?.state);renderLog('log-input',d.logs?.input);renderLog('log-gesture',d.logs?.gesture);renderLog('log-other',[...(d.logs?.sensor||[]),...(d.logs?.other||[])]);}
+async function refresh(){try{let r=await fetch('/api/snapshot',{cache:'no-store'});render(await r.json())}catch(e){$('conn').textContent='服务断开'}}setInterval(refresh,50);refresh();
+$('terminal').addEventListener('submit',async e=>{e.preventDefault();let input=$('command'),command=input.value.trim();if(!command)return;let r=await fetch('/api/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command})});if(r.ok)input.value='';});
+</script>
+</body></html>

@@ -12,6 +12,7 @@
 #include "ui.h"
 #include "config.h"
 #include "sensors.h"
+#include "gesture.h"
 #include "state_machine.h"
 
 #include <Arduino.h>
@@ -77,6 +78,7 @@ struct PageCache {
 
 static PageCache g_cache[PAGE_COUNT];
 static UIPage   g_last_page = PAGE_COUNT;
+static ShakePhase g_last_shake_phase = SHAKE_PHASE_IDLE;
 
 // 估算字宽 / 字高 —— canvas 没提供 measure 接口；估准就行
 static int charW(Canvas::eFontSize_t f) { return (f == F24) ? 14 : 9; }
@@ -440,6 +442,27 @@ static bool render_dispatch(UIPage p) {
     }
 }
 
+// 三段式甩动反馈：首峰 35%，反向峰 70%，回稳提交后由新页面完成 100%。
+// 画在最底部，不破坏页面主体；方向决定进度条从哪一侧伸出。
+static bool draw_shake_transition() {
+    const ShakePhase phase = g_gesture.shakePhase();
+    if (phase == g_last_shake_phase) return false;
+
+    constexpr int y = 310;
+    constexpr int h = 10;
+    constexpr int w = 240;
+    k10.canvas->canvasRectangle(0, y, w, h, COLOR_BG, COLOR_BG, true);
+
+    const int progress_w = (w * shakeAnimationPercent(phase)) / 100;
+    if (progress_w > 0) {
+        const int x = g_gesture.shakeDirection() > 0 ? 0 : (w - progress_w);
+        const uint32_t color = phase == SHAKE_PHASE_OUTBOUND ? COLOR_WARN : COLOR_ACCENT;
+        k10.canvas->canvasRectangle(x, y, progress_w, h, color, color, true);
+    }
+    g_last_shake_phase = phase;
+    return true;
+}
+
 void rgb_off() {
     static bool done = false;
     if (done) return;
@@ -467,6 +490,7 @@ void dn_ui_setup() {
     k10.rgb->write(-1, RGB_OFF);
     for (uint8_t i = 0; i < PAGE_COUNT; ++i) g_cache[i] = PageCache();
     g_last_page = PAGE_COUNT;
+    g_last_shake_phase = SHAKE_PHASE_IDLE;
 }
 
 void dn_ui_render() {
@@ -481,7 +505,9 @@ void dn_ui_render() {
     }
 
     // 字段级 diff 更新；没变就不动
-    if (render_dispatch(cur)) {
+    bool dirty = render_dispatch(cur);
+    dirty |= draw_shake_transition();
+    if (dirty) {
         k10.canvas->updateCanvas();      // 只有真改了才推 SPI
     }
     rgb_off();

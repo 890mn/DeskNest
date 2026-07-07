@@ -194,13 +194,13 @@ namespace defaults {
     constexpr uint16_t T_ROTATE_STABLE_MS       = 400;
     constexpr uint16_t T_FACE_DOWN_STABLE_MS    = 800;
     constexpr uint16_t T_FACE_UP_STABLE_MS      = 300;
-    constexpr uint16_t T_SHAKE_COOLDOWN_MS      = 600;
+    constexpr uint16_t T_SHAKE_COOLDOWN_MS      = 450;
     constexpr float    G_ROTATE_THRESHOLD       = 0.7f;
     // K10 实测：设备正面朝桌放（翻面）时 Z ≈ +0.92g；正面朝上时 Z ≈ -0.92g
     // 因此 face-down 阈值用 +0.7、face-up 用 -0.7（与初版相反）
     constexpr float    G_FACE_DOWN_THRESHOLD    =  0.7f;
     constexpr float    G_FACE_UP_THRESHOLD      = -0.7f;
-    constexpr float    G_SHAKE_THRESHOLD        = 1.5f;
+    constexpr float    G_SHAKE_THRESHOLD        = 0.55f;
 
     // 告警阈值
     constexpr uint8_t  ALERT_ORANGE_PCT         = 50;

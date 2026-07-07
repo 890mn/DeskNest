@@ -227,6 +227,97 @@ void test_gesture_shake_direction_right() {
 }
 
 // ===========================================================================
+// 6c) 真实甩动：静止 → 首次峰值锁方向 → 反向峰值 → 回稳才提交
+// ===========================================================================
+void test_gesture_shake_waits_for_return_and_settle() {
+    GestureEngine g;
+    g.begin();
+    feedSettle(g, 0.0f, 1.0f, 0.0f);
+
+    // 静止噪声不能决定方向；首次越过阈值的正向峰值才是动作起点。
+    GestureEvent e = g.update(accel(+0.04f, 0.0f, 0.0f), g_mock_millis);
+    g_mock_millis += 33;
+    TEST_ASSERT_EQUAL(GESTURE_NONE, e);
+    TEST_ASSERT_EQUAL(SHAKE_PHASE_IDLE, g.shakePhase());
+
+    e = g.update(accel(+0.95f, 0.0f, 0.0f), g_mock_millis);
+    g_mock_millis += 33;
+    TEST_ASSERT_EQUAL(GESTURE_NONE, e);
+    TEST_ASSERT_EQUAL(SHAKE_PHASE_OUTBOUND, g.shakePhase());
+    TEST_ASSERT_EQUAL(1, g.shakeDirection());
+
+    // 反向峰值只推进动画中段，不能提前翻页。
+    e = g.update(accel(-0.90f, 0.0f, 0.0f), g_mock_millis);
+    g_mock_millis += 33;
+    TEST_ASSERT_EQUAL(GESTURE_NONE, e);
+    TEST_ASSERT_EQUAL(SHAKE_PHASE_RETURNING, g.shakePhase());
+
+    // 连续回到静止区后，才完成一次 LEFT 手势。
+    for (int i = 0; i < 2; ++i) {
+        e = g.update(accel(0.03f, 0.0f, 0.0f), g_mock_millis);
+        g_mock_millis += 33;
+        TEST_ASSERT_EQUAL(GESTURE_NONE, e);
+    }
+    e = g.update(accel(0.02f, 0.0f, 0.0f), g_mock_millis);
+    g_mock_millis += 33;
+    TEST_ASSERT_EQUAL(GESTURE_SHAKE_LEFT, e);
+    TEST_ASSERT_EQUAL(SHAKE_PHASE_IDLE, g.shakePhase());
+}
+
+void test_gesture_shake_settles_at_learned_static_x_offset() {
+    GestureEngine g;
+    g.begin();
+
+    // 真机正面朝上时静态 ax 约为 +0.20g；这是安装姿态/重力投影，不是运动。
+    feedSettle(g, 0.20f, 0.0f, 0.98f);
+
+    GestureEvent e = g.update(accel(+0.95f, 0.0f, 0.98f), g_mock_millis);
+    g_mock_millis += 33;
+    TEST_ASSERT_EQUAL(GESTURE_NONE, e);
+    TEST_ASSERT_EQUAL(SHAKE_PHASE_OUTBOUND, g.shakePhase());
+
+    e = g.update(accel(-0.60f, 0.0f, 0.98f), g_mock_millis);
+    g_mock_millis += 33;
+    TEST_ASSERT_EQUAL(GESTURE_NONE, e);
+    TEST_ASSERT_EQUAL(SHAKE_PHASE_RETURNING, g.shakePhase());
+
+    for (int i = 0; i < 2; ++i) {
+        e = g.update(accel(0.20f, 0.0f, 0.98f), g_mock_millis);
+        g_mock_millis += 33;
+        TEST_ASSERT_EQUAL(GESTURE_NONE, e);
+    }
+    e = g.update(accel(0.20f, 0.0f, 0.98f), g_mock_millis);
+    TEST_ASSERT_EQUAL(GESTURE_SHAKE_LEFT, e);
+}
+
+void test_gesture_exposes_baseline_and_relative_motion_for_dashboard() {
+    GestureEngine g;
+    g.begin();
+    feedSettle(g, 0.20f, 0.0f, 0.98f);
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.20f, g.shakeBaselineAx());
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.00f, g.shakeMotionAx(0.20f));
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.60f, g.shakeMotionAx(0.80f));
+}
+
+void test_shake_animation_uses_three_stable_keyframes() {
+    TEST_ASSERT_EQUAL_UINT8(0,  shakeAnimationPercent(SHAKE_PHASE_IDLE));
+    TEST_ASSERT_EQUAL_UINT8(35, shakeAnimationPercent(SHAKE_PHASE_OUTBOUND));
+    TEST_ASSERT_EQUAL_UINT8(70, shakeAnimationPercent(SHAKE_PHASE_RETURNING));
+}
+
+void test_shake_calibration_recommends_safe_threshold_from_peak() {
+    TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.585f, recommendShakeThreshold(0.90f));
+    TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.350f, recommendShakeThreshold(0.30f));
+    TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.900f, recommendShakeThreshold(2.00f));
+}
+
+void test_shake_calibration_ignores_unrelated_face_event() {
+    TEST_ASSERT_FALSE(dn_tuning_event_matches(GESTURE_SHAKE_LEFT, GESTURE_FACE_UP_OPEN));
+    TEST_ASSERT_TRUE(dn_tuning_event_matches(GESTURE_SHAKE_LEFT, GESTURE_SHAKE_RIGHT));
+    TEST_ASSERT_TRUE(dn_tuning_event_matches(GESTURE_FACE_DOWN, GESTURE_FACE_DOWN));
+}
+
+// ===========================================================================
 // 6c) 摇动负样本：ax 静止 → 不触发
 // ===========================================================================
 void test_gesture_shake_not_detected_when_steady() {
@@ -266,45 +357,36 @@ void test_gesture_shake_not_detected_below_threshold() {
         }
     }
     TEST_ASSERT_FALSE_MESSAGE(got, "SHAKE fired with peak |ax| < threshold");
-    g_tuning.shake_threshold = 0.8f;  // 恢复默认
+    g_tuning.shake_threshold = defaults::G_SHAKE_THRESHOLD;
 }
 
 // ===========================================================================
-// 7) 摇动冷却：600ms 内第二次摇动被吞掉
+// 7) 摇动冷却：完成后 450ms 内第二次摇动被吞掉
 // ===========================================================================
 void test_gesture_shake_cooldown_blocks_second() {
     GestureEngine g;
     g.begin();
     feedSettle(g, 0.0f, 1.0f, 0.0f);
 
-    // 第一次摇动
-    bool first = false;
-    for (int i = 0; i < 10; ++i) {
-        if (g.update(accel(1.8f, 0.0f, 0.0f), g_mock_millis)
-            == GESTURE_SHAKE_LEFT) { first = true; break; }
-        g_mock_millis += 33;
-    }
+    auto doShake = [&g]() {
+        const float seq[] = { +0.9f, -0.9f, 0.05f, 0.03f, 0.02f };
+        bool fired = false;
+        for (float ax : seq) {
+            const GestureEvent e = g.update(accel(ax, 0.0f, 0.0f), g_mock_millis);
+            g_mock_millis += 33;
+            if (e == GESTURE_SHAKE_LEFT) fired = true;
+        }
+        return fired;
+    };
+
+    const bool first = doShake();
     TEST_ASSERT_TRUE(first);
 
-    // 紧接着第二次摇动：在 600ms 冷却窗内
-    bool secondFired = false;
-    for (int i = 0; i < 10; ++i) {              // 10*33 = 330ms < 600ms
-        GestureEvent e = g.update(accel(1.8f, 0.0f, 0.0f), g_mock_millis);
-        g_mock_millis += 33;
-        if (e == GESTURE_SHAKE_LEFT || e == GESTURE_SHAKE_RIGHT) {
-            secondFired = true; break;
-        }
-    }
-    TEST_ASSERT_FALSE_MESSAGE(secondFired, "second shake fired within 600ms cooldown");
+    const bool secondFired = doShake();
+    TEST_ASSERT_FALSE_MESSAGE(secondFired, "second shake fired within cooldown");
 
-    // 过了冷却后再摇：应当能再触发
-    feedSettle(g, 0.0f, 1.0f, 0.0f);            // 静止推过 600ms
-    bool third = false;
-    for (int i = 0; i < 10; ++i) {
-        if (g.update(accel(1.8f, 0.0f, 0.0f), g_mock_millis)
-            == GESTURE_SHAKE_LEFT) { third = true; break; }
-        g_mock_millis += 33;
-    }
+    feedSettle(g, 0.0f, 1.0f, 0.0f);
+    const bool third = doShake();
     TEST_ASSERT_TRUE_MESSAGE(third, "shake did not re-arm after cooldown");
 }
 
@@ -479,6 +561,11 @@ void test_tuning_repl_set_modifies_field() {
     dn_tuning_inject_command("set face_cd 500");
     TEST_ASSERT_EQUAL_UINT16(500, g_tuning.face_cooldown_ms);
 
+    dn_tuning_inject_command("set shake_return 0.31");
+    TEST_ASSERT_EQUAL_FLOAT(0.31f, g_tuning.shake_return_threshold);
+    dn_tuning_inject_command("set shake_settle 0.12");
+    TEST_ASSERT_EQUAL_FLOAT(0.12f, g_tuning.shake_settle_threshold);
+
     // 名字错：不报错也不改值
     const float before = g_tuning.face_down_threshold;
     dn_tuning_inject_command("set bogus_name 1.23");
@@ -650,6 +737,12 @@ int main(int /*argc*/, char** /*argv*/) {
     RUN_TEST(test_gesture_rotate_landscape_to_portrait);
     RUN_TEST(test_gesture_shake_detected);
     RUN_TEST(test_gesture_shake_direction_right);
+    RUN_TEST(test_gesture_shake_waits_for_return_and_settle);
+    RUN_TEST(test_gesture_shake_settles_at_learned_static_x_offset);
+    RUN_TEST(test_gesture_exposes_baseline_and_relative_motion_for_dashboard);
+    RUN_TEST(test_shake_animation_uses_three_stable_keyframes);
+    RUN_TEST(test_shake_calibration_recommends_safe_threshold_from_peak);
+    RUN_TEST(test_shake_calibration_ignores_unrelated_face_event);
     RUN_TEST(test_gesture_shake_not_detected_when_steady);
     RUN_TEST(test_gesture_shake_not_detected_below_threshold);
     RUN_TEST(test_gesture_shake_cooldown_blocks_second);

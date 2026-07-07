@@ -30,6 +30,13 @@
 
 namespace desknest {
 
+inline bool dn_tuning_event_matches(GestureEvent expected, GestureEvent actual) {
+    if (actual == expected) return true;
+    const bool expects_shake = expected == GESTURE_SHAKE_LEFT || expected == GESTURE_SHAKE_RIGHT;
+    const bool got_shake = actual == GESTURE_SHAKE_LEFT || actual == GESTURE_SHAKE_RIGHT;
+    return expects_shake && got_shake;
+}
+
 // 启动时打印 banner + 第一条 prompt
 void dn_tuning_setup();
 

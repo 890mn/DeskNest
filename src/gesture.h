@@ -108,6 +108,8 @@ struct GestureTuning {
 
     // 摇动
     float    shake_threshold;         // 200ms 窗口内 |a| 峰值 > 此值（默认 1.5g）
+    float    shake_return_threshold;  // 相对基线的反向峰值门槛
+    float    shake_settle_threshold;  // 相对基线的回稳门槛
     uint16_t shake_window_ms;         // 摇动峰值跟踪窗口（默认 200ms）
     uint16_t shake_cooldown_ms;       // 两次摇动最小间隔（默认 600ms）
     uint8_t  shake_invert;            // 方向反转（K10 BSP 坐标方向不一致时用）
@@ -120,6 +122,27 @@ struct GestureTuning {
     // 输出（不属于手势识别，但 REPL 用来切 app.cpp 的 1Hz 心跳流）
     uint8_t  verbose;                 // 0 = 安静；1 = 1Hz 心跳 + 传感器都打
 };
+
+enum ShakePhase : uint8_t {
+    SHAKE_PHASE_IDLE = 0,
+    SHAKE_PHASE_OUTBOUND,
+    SHAKE_PHASE_RETURNING,
+};
+
+inline uint8_t shakeAnimationPercent(ShakePhase phase) {
+    switch (phase) {
+        case SHAKE_PHASE_OUTBOUND:  return 35;
+        case SHAKE_PHASE_RETURNING: return 70;
+        default:                    return 0;
+    }
+}
+
+inline float recommendShakeThreshold(float measured_peak) {
+    float threshold = measured_peak * 0.65f;
+    if (threshold < 0.35f) threshold = 0.35f;
+    if (threshold > 0.90f) threshold = 0.90f;
+    return threshold;
+}
 
 // 全局实例：默认值在 gesture.cpp 里填。REPL 的 'set' / 'reset' 改这个。
 extern GestureTuning g_tuning;
@@ -138,6 +161,10 @@ public:
 
     // 内部状态访问（state_machine 也会用 orientation）
     OrientationState orientation() const { return _orient.value(); }
+    ShakePhase shakePhase() const { return _shake_phase; }
+    int8_t shakeDirection() const { return _shake_direction; } // +1=left, -1=right, 0=none
+    float shakeBaselineAx() const { return _shake_baseline_ax; }
+    float shakeMotionAx(float raw_ax) const { return raw_ax - _shake_baseline_ax; }
 
 private:
     // 滑动平均窗口
@@ -159,12 +186,14 @@ private:
     float _peak_abs_accel = 0;
     uint32_t _peak_window_start_ms = 0;
 
-    // 摇动检测：ax 环形缓冲 + 窗口起点（用于零交叉计数 / 方向判断）
-    static constexpr uint8_t SHAKE_BUF = 8;        // ≈ 267ms @ 30Hz
-    float    _shake_ax_buf[SHAKE_BUF] = {0};
-    uint8_t  _shake_idx = 0;
-    bool     _shake_filled = false;
-    uint32_t _shake_win_start_ms = 0;
+    // 摇动检测：静止 → 首次峰值 → 反向峰值 → 连续回稳
+    ShakePhase _shake_phase = SHAKE_PHASE_IDLE;
+    int8_t     _shake_axis_sign = 0;   // 原始 ax 首峰符号
+    int8_t     _shake_direction = 0;   // UI 语义：+1=left, -1=right
+    uint8_t    _shake_settle_samples = 0;
+    uint32_t   _shake_started_ms = 0;
+    float      _shake_baseline_ax = 0.0f;
+    bool       _shake_baseline_valid = false;
 
     // 翻面 / Tap：跨 update() 持续累加的"何时进入 zone"计时器
     //   之前是 update() 里的 static local，跨实例/跨 begin() 也会泄露；

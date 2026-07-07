@@ -29,10 +29,11 @@ GestureTuning g_tuning = {
     .rotate_stable_ms    = defaults::T_ROTATE_STABLE_MS,      // 400
     .rotate_cooldown_ms  = 1000,
     // 摇动
-    .shake_threshold     = 0.8f,                              // 旧版单峰阈值 1.5g 偏严；
-                                                               // 新版用零交叉 + 峰值，0.8g 已能区分"真摇动"和噪声
-    .shake_window_ms     = 300,                               // 略放宽窗口到 300ms 容下 3-4 次摆
-    .shake_cooldown_ms   = defaults::T_SHAKE_COOLDOWN_MS,    // 600
+    .shake_threshold     = 0.55f,                             // 自然手持甩动首峰
+    .shake_return_threshold = 0.35f,                          // 反向回拉峰值
+    .shake_settle_threshold = 0.16f,                          // 连续 3 帧进入此区间才提交
+    .shake_window_ms     = 650,                               // 容纳甩出 + 回拉 + 回稳
+    .shake_cooldown_ms   = 450,                               // 完整动作已回稳，可稍短
     .shake_invert        = 0,                                 // 0 = 约定 ax>0 → LEFT；1 = 反转
     // Tap
     .tap_z_high          = 1.2f,
@@ -58,11 +59,13 @@ void GestureEngine::begin() {
     _face_up_since_ms     = 0;
     _tap_prev_gz          = 1.0f;
 
-    // 摇动环形缓冲也清掉
-    for (uint8_t i = 0; i < SHAKE_BUF; ++i) _shake_ax_buf[i] = 0;
-    _shake_idx         = 0;
-    _shake_filled      = false;
-    _shake_win_start_ms = 0;
+    _shake_phase          = SHAKE_PHASE_IDLE;
+    _shake_axis_sign      = 0;
+    _shake_direction      = 0;
+    _shake_settle_samples = 0;
+    _shake_started_ms     = 0;
+    _shake_baseline_ax    = 0.0f;
+    _shake_baseline_valid = false;
 
     // 滑动窗也清空，避免上一步的残值污染本步
     _wx.reset();
@@ -89,64 +92,69 @@ OrientationState GestureEngine::classifyOrientation_(float ax, float ay) const {
 }
 
 GestureEvent GestureEngine::detectShake_(float ax, uint32_t now_ms) {
-    // 摇动检测：零交叉计数 + 峰值 + 方向（ax 窗口 sum 的符号）
-    //
-    // 旧版只看 |a| 单峰是否 > shake_threshold（默认 1.5g）；真实摇动时 ax
-    // 反复过零，峰值常到不了 1.5g，且 fire 瞬间 ax 符号随机，谈不上"左/右"。
-    //
-    // 新版（plan §4.2）：
-    //   - 8 样本 ≈ 267ms 窗口内 ax 零交叉 ≥ 2（至少 1 个完整左右摆）
-    //   - 窗口内 |ax| 峰值 > shake_threshold（默认 0.8g；wizard 可调）
-    //   - 方向 = sum(ax) 符号：sum>0 → 主导正向 → SHAKE_LEFT
-    //   - 冷却 600ms 防抖
+    const float start_threshold  = g_tuning.shake_threshold;
+    const float return_threshold = g_tuning.shake_return_threshold;
+    const float settle_threshold = g_tuning.shake_settle_threshold;
 
-    // 1) 窗口超时 → 标记为"待重新累积"（不动 _shake_idx，让它继续环形写）
-    if (_shake_filled && (now_ms - _shake_win_start_ms) > g_tuning.shake_window_ms) {
-        _shake_filled = false;
-        _shake_idx = 0;       // 重新从 0 开始累积（之前的 8 样本作废）
+    if (_shake_phase != SHAKE_PHASE_IDLE &&
+        now_ms - _shake_started_ms > g_tuning.shake_window_ms) {
+        _shake_phase = SHAKE_PHASE_IDLE;
+        _shake_axis_sign = 0;
+        _shake_direction = 0;
+        _shake_settle_samples = 0;
     }
 
-    // 2) 写一帧；首帧（_shake_idx==0 && !_shake_filled）记下窗口起点
-    if (_shake_idx == 0 && !_shake_filled) {
-        _shake_win_start_ms = now_ms;
+    if (!_shake_baseline_valid) {
+        _shake_baseline_ax = ax;
+        _shake_baseline_valid = true;
+        return GESTURE_NONE;
     }
-    _shake_ax_buf[_shake_idx] = ax;
-    _shake_idx = (_shake_idx + 1) % SHAKE_BUF;
-    if (_shake_idx == 0) _shake_filled = true;
-    if (!_shake_filled) return GESTURE_NONE;   // 累积未满 8 帧，不判
 
-    // 3) 零交叉 ≥ 2
-    int zc = 0;
-    float prev = _shake_ax_buf[0];
-    for (uint8_t i = 1; i < SHAKE_BUF; ++i) {
-        if ((prev > 0.0f) != (_shake_ax_buf[i] > 0.0f)) zc++;
-        prev = _shake_ax_buf[i];
+    const float motion_ax = ax - _shake_baseline_ax;
+
+    if (_shake_phase == SHAKE_PHASE_IDLE) {
+        if (fabsf(motion_ax) < start_threshold) {
+            // 静止时缓慢跟随安装角度/重力投影，不把约 0.20g 的偏置当作运动。
+            _shake_baseline_ax += motion_ax * 0.08f;
+            return GESTURE_NONE;
+        }
+        if (now_ms - _last_shake_ms < g_tuning.shake_cooldown_ms) return GESTURE_NONE;
+
+        _shake_axis_sign = motion_ax > 0.0f ? 1 : -1;
+        const bool positive_means_left = (g_tuning.shake_invert == 0);
+        const bool is_left = (_shake_axis_sign > 0) == positive_means_left;
+        _shake_direction = is_left ? 1 : -1;
+        _shake_started_ms = now_ms;
+        _shake_phase = SHAKE_PHASE_OUTBOUND;
+        _peak_abs_accel = fabsf(motion_ax);
+        return GESTURE_NONE;
     }
-    if (zc < 2) return GESTURE_NONE;
 
-    // 4) 窗口内 |ax| 峰值
-    float peak = 0.0f;
-    for (uint8_t i = 0; i < SHAKE_BUF; ++i) {
-        const float v = _shake_ax_buf[i];
-        if (fabsf(v) > peak) peak = fabsf(v);
+    if (_shake_phase == SHAKE_PHASE_OUTBOUND) {
+        if (fabsf(motion_ax) > _peak_abs_accel) _peak_abs_accel = fabsf(motion_ax);
+        if ((_shake_axis_sign > 0 && motion_ax <= -return_threshold) ||
+            (_shake_axis_sign < 0 && motion_ax >= return_threshold)) {
+            _shake_phase = SHAKE_PHASE_RETURNING;
+            _shake_settle_samples = 0;
+        }
+        return GESTURE_NONE;
     }
-    if (peak < g_tuning.shake_threshold) return GESTURE_NONE;
 
-    // 5) 冷却
-    if (now_ms - _last_shake_ms < g_tuning.shake_cooldown_ms) return GESTURE_NONE;
+    if (fabsf(motion_ax) <= settle_threshold) {
+        if (++_shake_settle_samples < 3) return GESTURE_NONE;
 
-    // 6) 触发
-    //   方向语义：用户先动 → 反方向拉回 = 一次完整摇动
-    //   方向 = 第一帧 ax 的符号（用户初始移动方向）
-    //   - 默认 ax[0] > 0  → SHAKE_LEFT；  ax[0] < 0 → SHAKE_RIGHT
-    //   - shake_invert = 1 时方向反转（K10 BSP 坐标不一致时用）
-    _last_shake_ms  = now_ms;
-    _shake_filled   = false;
-    _shake_idx      = 0;       // 准备下一窗
-    _peak_abs_accel = peak;
-    const bool first_positive = (_shake_ax_buf[0] > 0.0f);
-    const bool go_left = (first_positive != (g_tuning.shake_invert != 0));
-    return go_left ? GESTURE_SHAKE_LEFT : GESTURE_SHAKE_RIGHT;
+        const GestureEvent event = _shake_direction > 0
+            ? GESTURE_SHAKE_LEFT : GESTURE_SHAKE_RIGHT;
+        _last_shake_ms = now_ms;
+        _shake_phase = SHAKE_PHASE_IDLE;
+        _shake_axis_sign = 0;
+        _shake_direction = 0;
+        _shake_settle_samples = 0;
+        return event;
+    }
+
+    _shake_settle_samples = 0;
+    return GESTURE_NONE;
 }
 
 bool GestureEngine::detectTap_(const AccelReading& acc, uint32_t now_ms) {
