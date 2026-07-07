@@ -69,21 +69,11 @@ void StateMachine::begin() {
 }
 
 // ============================================================================
-// update
+// 各路输入入口（每个独立，从 IDLE 出发）
 // ============================================================================
 
-void StateMachine::update(GestureEvent g, ButtonEvent b, OrientationState detected,
-                          uint32_t now_ms) {
-    // 0) 临时解锁过期检查
-    if (_s.rotLock == ROT_LOCKED_TEMP_5S && now_ms >= _temp_unlock_expire_ms) {
-        // 5s 到了：恢复到之前的锁定（简化：直接回 ROT_AUTO）
-        _s.rotLock = ROT_AUTO;
-        Serial.println("[D][STATE] rot lock temp 5s expired → AUTO");
-    }
-
-    // 1) 翻面 / 打开恢复：最优先
-    if (g == GESTURE_FACE_DOWN) {
-        // 进入翻面前先记住当前页面（face-up 时恢复）
+void StateMachine::applyFace_(GestureEvent face, uint32_t now_ms) {
+    if (face == GESTURE_FACE_DOWN) {
         _s.pre_face_down_page = _s.page;
         _s.orientation = ORIENTATION_FACE_DOWN;
         _s.system      = SYSTEM_FACE_DOWN_SLEEP;
@@ -92,48 +82,94 @@ void StateMachine::update(GestureEvent g, ButtonEvent b, OrientationState detect
                       (int)_s.pre_face_down_page);
         return;
     }
-    if (g == GESTURE_FACE_UP_OPEN) {
+    if (face == GESTURE_FACE_UP_OPEN) {
+        // face-up 不一定知道 orientation —— 让后续 updateOrientation 设
         _s.system = SYSTEM_ACTIVE;
-        _s.orientation = detected;  // 用实际姿态
-        // 不再强行覆盖 _s.page —— 恢复 face-down 之前的页面
-        _s.page = _s.pre_face_down_page;
+        _s.page   = _s.pre_face_down_page;
         _s.lastInputMs = now_ms;
-        Serial.printf("[D][STATE] → ACTIVE / %s / page %d (from face up)\n",
-                      detected == ORIENTATION_LANDSCAPE ? "LANDSCAPE" : "PORTRAIT",
+        Serial.printf("[D][STATE] → ACTIVE (face up, page %d restored)\n",
                       (int)_s.page);
         return;
     }
+}
 
-    // 翻面状态下：忽略 SHAKE/按键（除 BUTTON_FACTORY）。
-    // ⚠ 不要删这个 return：BUTTON_FACTORY 在这里单独处理，然后早 return，
-    // 下面 applyButton_ 不应再被调到（防止 FACOTRY 被 applyButton_ 二次 switch 走错分支）。
+#if ENABLE_FACE_INPUT
+void StateMachine::updateFace(GestureEvent face, uint32_t now_ms) {
+    applyFace_(face, now_ms);
+}
+#endif
+
+#if ENABLE_GESTURE_INPUT
+void StateMachine::updateGesture(GestureEvent g, uint32_t now_ms) {
+    // 在 face-down 状态下忽略手势（除非是 FACTORY，从按键来）
+    if (_s.system == SYSTEM_FACE_DOWN_SLEEP) return;
+    if (g == GESTURE_NONE) return;
+    applyGesture_(g, now_ms);
+}
+#endif
+
+#if ENABLE_BUTTON_INPUT
+void StateMachine::updateButton(ButtonEvent b, uint32_t now_ms) {
+    // face-down 时：吞掉所有按键（除 FACTORY）
     if (_s.system == SYSTEM_FACE_DOWN_SLEEP) {
         if (b == BUTTON_FACTORY) {
             Serial.println("[D][STATE] factory reset triggered from face-down");
-            // 工厂复位由 SETTINGS 处理；这里只恢复 ACTIVE
             _s.system = SYSTEM_ACTIVE;
-            _s.orientation = detected;
+            _s.orientation = g_gesture.orientation();
             _s.page = PAGE_PORTRAIT_SETTINGS;
             _s.lastInputMs = now_ms;
         }
         return;
     }
+    if (b == BUTTON_NONE) return;
+    applyButton_(b, now_ms);
+}
+#endif
 
-    // 2) 按键处理（BUTTON_FIRST 模式 / 默认）
-    if (b != BUTTON_NONE) {
-        applyButton_(b, now_ms);
-    }
-
-    // 3) 手势处理（按键有事件时不处理手势，避免抢占）
-    if (b == BUTTON_NONE && g != GESTURE_NONE) {
-        applyGesture_(g, now_ms);
-    }
-
-    // 4) 姿态同步（独立事件流）
+#if ENABLE_ORIENTATION_INPUT
+void StateMachine::updateOrientation(OrientationState detected, uint32_t now_ms) {
+    if (_s.system == SYSTEM_FACE_DOWN_SLEEP) return;  // face-down 屏蔽
     applyOrientation_(detected, now_ms);
+}
+#endif
 
-    // 5) 电源档位超时
+#if ENABLE_POWER_TIMEOUT
+void StateMachine::tickPowerTimeout(uint32_t now_ms) {
+    // 临时解锁过期
+    if (_s.rotLock == ROT_LOCKED_TEMP_5S && now_ms >= _temp_unlock_expire_ms) {
+        _s.rotLock = ROT_AUTO;
+        Serial.println("[D][STATE] rot lock temp 5s expired → AUTO");
+    }
     applyPowerTimeout_(now_ms);
+}
+#endif
+
+// ============================================================================
+// update —— 旧入口，按优先级依次调各 update*()
+// ============================================================================
+
+void StateMachine::update(GestureEvent g, ButtonEvent b, OrientationState detected,
+                          uint32_t now_ms) {
+#if ENABLE_FACE_INPUT
+    updateFace(g, now_ms);   // 翻面最优先
+#endif
+
+#if ENABLE_ORIENTATION_INPUT
+    updateOrientation(detected, now_ms);
+#endif
+
+#if ENABLE_BUTTON_INPUT
+    updateButton(b, now_ms);  // 按键优先于手势（同帧抢）
+#endif
+
+#if ENABLE_GESTURE_INPUT
+    // 手势只在按键无事件时跑（避免同帧抢占）
+    if (b == BUTTON_NONE) updateGesture(g, now_ms);
+#endif
+
+#if ENABLE_POWER_TIMEOUT
+    tickPowerTimeout(now_ms);
+#endif
 }
 
 // ============================================================================
