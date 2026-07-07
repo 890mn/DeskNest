@@ -262,9 +262,11 @@ void test_gesture_face_up_open() {
     }
     TEST_ASSERT_TRUE(down);
 
-    // 翻回
+    // 翻回。
+    // 留 100 个迭代：滑动窗口从 0.95 过渡到 -0.95 吃掉 ~8 个，
+    // 之后要等 2000ms 翻面冷却 + 300ms 稳定 = ~70 个 @ 33ms。
     bool up = false;
-    for (int i = 0; i < 60; ++i) {
+    for (int i = 0; i < 100; ++i) {
         GestureEvent e = g.update(accel(0.0f, 0.0f, -0.95f), g_mock_millis);
         g_mock_millis += 33;
         if (e == GESTURE_FACE_UP_OPEN) { up = true; break; }
@@ -323,11 +325,26 @@ void test_gesture_invalid_sample_returns_none() {
 }
 
 // ===========================================================================
-// 入口：Unity 自管 main()
+// 入口：Unity main()
 //
-// 注意：setUp/tearDown 由 setUp(void)/tearDown(void) 提供。
-// 不要加 `int main()` —— 让 platformio + native + unity 的 runner
-// 自己调 RUN_TEST（它会扫 test_*.cpp 收集所有 test_* 函数）。
-// 如果要写自定义 main，需要在 platformio test runner 配置里关掉自动 main。
+// 提供自己的 main()：PIO 的 native + unity 不会自动注入 main，
+// 链接器用 crtexewin 的默认 main → WinMain 死循环。
+// 用 UNITY_BEGIN / RUN_TEST / UNITY_END 显式跑用例。
 // ===========================================================================
-// (intentionally no main())
+
+int main(int /*argc*/, char** /*argv*/) {
+    UNITY_BEGIN();
+    RUN_TEST(test_sliding_window_average_grows_then_slides);
+    RUN_TEST(test_hysteresis_needs_stable_window_to_commit);
+    RUN_TEST(test_gesture_initial_orientation_is_portrait);
+    RUN_TEST(test_gesture_rotate_portrait_to_landscape);
+    RUN_TEST(test_gesture_rotate_landscape_to_portrait);
+    RUN_TEST(test_gesture_shake_detected);
+    RUN_TEST(test_gesture_shake_cooldown_blocks_second);
+    RUN_TEST(test_gesture_face_down_roost);
+    RUN_TEST(test_gesture_face_up_open);
+    RUN_TEST(test_gesture_orientation_holds_in_dead_zone);
+    RUN_TEST(test_gesture_tap_on_z_spike);
+    RUN_TEST(test_gesture_invalid_sample_returns_none);
+    return UNITY_END();
+}
