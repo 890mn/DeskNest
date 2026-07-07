@@ -83,7 +83,7 @@ static const GestureStep STEPS[] = {
     { "shake",
       GESTURE_SHAKE_LEFT,            // 也接受 _RIGHT
       2000,
-      "左右摇一摇（3-4 次即可）",
+      "左右摇一摇 3-4 次（ax 反复过零；至少 1 个完整摆动）",
       { "shake", "shake_cd" }, 2 },
 
     { "tap",

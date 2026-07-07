@@ -1,13 +1,13 @@
 // src/ui.cpp
-// 栖屏 DeskNest - UI 渲染实现（P0-D 简化版）
+// 栖屏 DeskNest - UI 渲染层（脏区局部刷新版）
 // "栖于桌面，息于常亮之间"
 //
-// 设计原则：
-//   - 每页开头 canvasClear() 一次清空；之后所有 draw 用 autoClean=false
-//     （避免 X/Y 版 canvasText 的 autoClean 把后续区域填黑覆盖前面内容）
-//   - 主体用 24px 英文（GB2312 芯片字体覆盖不全，宽字易被 LVGL 截）
-//   - FACE_DOWN 显示英文 slogan 三行居中
-//   - RGB 默认全灭，避免干扰；后续 P1 再按状态点亮
+// 之前每页开头 canvasClear() 全屏清黑再全画一遍，1Hz 自动重绘导致闪屏。
+// 改用「每页一个 PageCache + drawField 字段级局部更新」：
+//   - 翻页（page change）才 canvasClear + 全画
+//   - 同页每帧用 cache 比对字段值，没变就不动；变了用黑矩形擦一块再写
+//   - 1Hz 心跳拿掉；status bar 的 idle=Xs 因为秒数真的变了，自然触发字段更新
+//   - 字段没变 → updateCanvas() 不调，SPI 不传输
 
 #include "ui.h"
 #include "config.h"
@@ -16,11 +16,11 @@
 
 #include <Arduino.h>
 #include <stdio.h>
+#include <string.h>
 #include <unihiker_k10.h>
 
 namespace desknest {
 
-// k10 全局实例在 sensors.cpp 定义
 extern UNIHIKER_K10 k10;
 
 namespace {
@@ -38,32 +38,103 @@ constexpr uint32_t COLOR_ACCENT   = 0x00BFFF;
 
 constexpr uint32_t RGB_OFF        = 0x000000;
 
-// 字体（短文本用 24，长文本用 16）
 constexpr auto F24 = Canvas::eCNAndENFont24;
 constexpr auto F16 = Canvas::eCNAndENFont16;
 
 // ---------------------------------------------------------------------------
-// Mock AI 用量
+// PageCache：每页一份；drawField 拿它对比 + 写入
 // ---------------------------------------------------------------------------
-struct AiUsage { int chatgpt_pct; int claude_pct; };
-AiUsage mock_ai_usage(uint32_t now_ms) {
-    AiUsage u;
-    int base = (now_ms / 60000) % 80 + 10;
-    u.chatgpt_pct = base + ((now_ms / 7000) % 15);
-    u.claude_pct  = (base / 2) + ((now_ms / 11000) % 20);
-    if (u.chatgpt_pct > 99) u.chatgpt_pct = 99;
-    if (u.claude_pct  > 99) u.claude_pct  = 99;
-    if (u.chatgpt_pct < 0)   u.chatgpt_pct = 0;
-    if (u.claude_pct  < 0)   u.claude_pct  = 0;
-    return u;
+struct PageCache {
+    bool    ever_drawn  = false;
+    char    title[20]   = "";
+    char    status[40]  = "";
+    char    temp[24]    = "";
+    char    humid[24]   = "";
+    char    light[20]   = "";
+    char    orient[20]  = "";
+    char    batt[28]    = "";
+    char    comfort[24] = "";
+    char    hint[40]    = "";
+    char    subline[40] = "";
+    char    bigtemp[16] = "";
+    char    bigunit[8]  = "";
+    int     chatgpt_pct    = -1;
+    int     claude_pct     = -1;
+    int     chatgpt_bar_w  = -1;
+    int     claude_bar_w   = -1;
+    int     power_idx      = -1;
+    int     sync_idx       = -1;
+    int     density_idx    = -1;
+    int     rotate_idx     = -1;
+    int     theme_idx      = -1;
+    char    ssid_line[24]  = "";
+    char    url_line[24]   = "";
+    // face_down 页用：三行 slogan
+    char    slogan1[32] = "";
+    char    slogan2[32] = "";
+    char    slogan3[32] = "";
+};
+
+static PageCache g_cache[PAGE_COUNT];
+static UIPage   g_last_page = PAGE_COUNT;
+
+// 估算字宽 / 字高 —— canvas 没提供 measure 接口；估准就行
+static int charW(Canvas::eFontSize_t f) { return (f == F24) ? 14 : 9; }
+static int lineH(Canvas::eFontSize_t f) { return (f == F24) ? 28 : 18; }
+
+// ---------------------------------------------------------------------------
+// drawField：值变了才画。先用黑矩形擦老的一块，再写新值。
+//  返回 true = 这次重画了（调用方决定要不要 updateCanvas）
+// ---------------------------------------------------------------------------
+static bool drawField(char* cache, size_t cap,
+                      const char* new_val,
+                      int x, int y,
+                      int max_chars,
+                      Canvas::eFontSize_t font, uint32_t color) {
+    if (strcmp(cache, new_val) == 0) return false;
+    int w = max_chars * charW(font);
+    int h = lineH(font);
+    k10.canvas->canvasRectangle(x, y, w, h, COLOR_BG, COLOR_BG, true);
+    k10.canvas->canvasText(new_val, x, y, color, font, 50, false);
+    strncpy(cache, new_val, cap - 1);
+    cache[cap - 1] = '\0';
+    return true;
 }
 
-uint32_t bar_color(int pct) {
-    if (pct > 85) return COLOR_ALERT;
-    if (pct > 50) return COLOR_WARN;
-    return COLOR_NORMAL;
+// 进度条：值变了才画
+static bool drawBar(int* cache_w, int new_pct,
+                    int x, int y, int w, int h, uint32_t bar_c) {
+    int new_w = (w * new_pct) / 100;
+    if (new_w < 0) new_w = 0;
+    if (*cache_w == new_w) return false;
+    // 整条槽先擦灰
+    k10.canvas->canvasRectangle(x, y, w, h, COLOR_DIM, COLOR_DIM, true);
+    if (new_w > 0) {
+        k10.canvas->canvasRectangle(x, y, new_w, h, bar_c, bar_c, true);
+    }
+    *cache_w = new_w;
+    return true;
 }
 
+// 静态一次性画（只在 ever_drawn=false 时画）
+static void drawOnce(bool* flag,
+                     int x, int y, const char* s, uint32_t color, Canvas::eFontSize_t font) {
+    if (*flag) return;
+    k10.canvas->canvasText(s, x, y, color, font, 50, false);
+    *flag = true;
+}
+static void drawOnceLine(bool* flag, int x1, int y, int x2, uint32_t color) {
+    if (*flag) return;
+    k10.canvas->canvasLine(x1, y, x2, y, color);
+    *flag = true;
+}
+static void drawOnceRect(bool* flag, int x, int y, int w, int h, uint32_t color) {
+    if (*flag) return;
+    k10.canvas->canvasRectangle(x, y, w, h, color, color, true);
+    *flag = true;
+}
+
+// 文字串：orient / sys 名
 const char* orient_str(OrientationState o) {
     switch (o) {
         case ORIENTATION_PORTRAIT:  return "Portrait";
@@ -72,7 +143,6 @@ const char* orient_str(OrientationState o) {
         default:                    return "Unknown";
     }
 }
-
 const char* sys_str(SystemState s) {
     switch (s) {
         case SYSTEM_ACTIVE:          return "ACTIVE";
@@ -85,262 +155,284 @@ const char* sys_str(SystemState s) {
     }
 }
 
+// Mock AI 用量
+struct AiUsage { int chatgpt_pct; int claude_pct; };
+AiUsage mock_ai_usage(uint32_t now_ms) {
+    AiUsage u;
+    int base = (now_ms / 60000) % 80 + 10;
+    u.chatgpt_pct = base + ((now_ms / 7000) % 15);
+    u.claude_pct  = (base / 2) + ((now_ms / 11000) % 20);
+    if (u.chatgpt_pct > 99) u.chatgpt_pct = 99;
+    if (u.claude_pct  > 99) u.claude_pct  = 99;
+    return u;
+}
+uint32_t bar_color(int pct) {
+    if (pct > 85) return COLOR_ALERT;
+    if (pct > 50) return COLOR_WARN;
+    return COLOR_NORMAL;
+}
+
 // ---------------------------------------------------------------------------
-// 通用工具：行绘制（autoClean=false，不重复清屏）
+// 通用：每页都画 status bar
 // ---------------------------------------------------------------------------
-void txt(int x, int y, const char* s, uint32_t color, Canvas::eFontSize_t font) {
-    k10.canvas->canvasText(s, x, y, color, font, 50, false);
-}
-
-void line_h(int x1, int y, int x2, uint32_t color) {
-    k10.canvas->canvasLine(x1, y, x2, y, color);
-}
-
-void rect_filled(int x, int y, int w, int h, uint32_t color) {
-    k10.canvas->canvasRectangle(x, y, w, h, color, color, true);
-}
-
-void progress_bar(int x, int y, int w, int h, int pct, uint32_t bar_c) {
-    rect_filled(x, y, w, h, COLOR_DIM);
-    int bar_w = (w * pct) / 100;
-    if (bar_w > 0) rect_filled(x, y, bar_w, h, bar_c);
-}
-
-void draw_status_bar() {
+static bool draw_status_bar(UIPage p) {
+    PageCache& c = g_cache[p];
     const auto& s = g_state.snapshot();
     char buf[40];
     uint32_t idle_s = (millis() - s.lastInputMs) / 1000;
-    snprintf(buf, sizeof(buf), "[%s] idle=%lus", sys_str(s.system),
-             (unsigned long)idle_s);
-    txt(5, 33, buf, COLOR_DIM, F16);
+    snprintf(buf, sizeof(buf), "[%s] idle=%lus",
+             sys_str(s.system), (unsigned long)idle_s);
+    return drawField(c.status, sizeof(c.status), buf, 5, 33, 28, F16, COLOR_DIM);
 }
 
-// ---------------------------------------------------------------------------
+// ===========================================================================
 // 竖屏页面
-// ---------------------------------------------------------------------------
-void render_portrait_overview() {
-    k10.canvas->canvasClear();
+// ===========================================================================
+static bool render_portrait_overview() {
+    PageCache& c = g_cache[PAGE_PORTRAIT_OVERVIEW];
+    bool dirty = false;
 
-    txt(5, 5, "DeskNest", COLOR_TITLE, F24);
-    draw_status_bar();
-    line_h(5, 55, 235, COLOR_DIM);
+    drawOnce(&c.ever_drawn, 5, 5, "DeskNest", COLOR_TITLE, F24);
+    drawOnceLine(&c.ever_drawn, 5, 55, 235, COLOR_DIM);
+
+    dirty |= draw_status_bar(PAGE_PORTRAIT_OVERVIEW);
 
     const auto& s = g_state.snapshot();
     const auto aht = g_sensors.aht20();
     const auto lux = g_sensors.ltr303();
     const auto bat = g_sensors.battery();
-
     char buf[40];
-    int y = 65;
-    constexpr int LH = 30;
 
     if (aht.valid) {
         snprintf(buf, sizeof(buf), "Temp   %.1f C", aht.temperatureC);
-        txt(5, y, buf, COLOR_NORMAL, F24); y += LH;
+        dirty |= drawField(c.temp, sizeof(c.temp), buf, 5, 65, 18, F24, COLOR_NORMAL);
         snprintf(buf, sizeof(buf), "Humid  %.1f %%", aht.humidityPct);
-        txt(5, y, buf, COLOR_ACCENT, F24); y += LH;
+        dirty |= drawField(c.humid, sizeof(c.humid), buf, 5, 95, 18, F24, COLOR_ACCENT);
     } else {
-        txt(5, y, "Temp   --", COLOR_DIM, F24); y += LH;
-        txt(5, y, "Humid  --", COLOR_DIM, F24); y += LH;
+        dirty |= drawField(c.temp,  sizeof(c.temp),  "Temp   --",      5, 65, 18, F24, COLOR_DIM);
+        dirty |= drawField(c.humid, sizeof(c.humid), "Humid  --",      5, 95, 18, F24, COLOR_DIM);
     }
 
     snprintf(buf, sizeof(buf), "Light  %d lx", (int)lux.lux);
-    txt(5, y, buf, COLOR_ACCENT, F24); y += LH;
+    dirty |= drawField(c.light, sizeof(c.light), buf, 5, 125, 18, F24, COLOR_ACCENT);
 
     snprintf(buf, sizeof(buf), "Orient %s", orient_str(s.orientation));
-    txt(5, y, buf, COLOR_TITLE, F24); y += LH;
+    dirty |= drawField(c.orient, sizeof(c.orient), buf, 5, 155, 18, F24, COLOR_TITLE);
 
     if (bat.valid) {
         snprintf(buf, sizeof(buf), "Batt   %d%% %.2fV", bat.percent, bat.voltage);
-        txt(5, y, buf, COLOR_DIM, F24);
+        dirty |= drawField(c.batt, sizeof(c.batt), buf, 5, 185, 22, F24, COLOR_DIM);
     } else {
-        txt(5, y, "Batt   USB (N/A)", COLOR_DIM, F24);
+        dirty |= drawField(c.batt, sizeof(c.batt), "Batt   USB (N/A)", 5, 185, 22, F24, COLOR_DIM);
     }
 
-    txt(5, 295, "[A] Next  [B] Prev", COLOR_DIM, F16);
+    dirty |= drawField(c.hint, sizeof(c.hint), "[A] Next  [B] Prev",
+                       5, 295, 22, F16, COLOR_DIM);
+    return dirty;
 }
 
-void render_portrait_ai_usage() {
-    k10.canvas->canvasClear();
+static bool render_portrait_ai_usage() {
+    PageCache& c = g_cache[PAGE_PORTRAIT_AI_USAGE];
+    bool dirty = false;
 
-    txt(5, 5, "AI Usage", COLOR_TITLE, F24);
-    draw_status_bar();
-    line_h(5, 55, 235, COLOR_DIM);
+    drawOnce(&c.ever_drawn, 5, 5, "AI Usage", COLOR_TITLE, F24);
+    drawOnceLine(&c.ever_drawn, 5, 55, 235, COLOR_DIM);
+    dirty |= draw_status_bar(PAGE_PORTRAIT_AI_USAGE);
 
     AiUsage u = mock_ai_usage(millis());
-    char buf[20];
 
-    txt(5, 70, "ChatGPT Plus", COLOR_TITLE, F24);
-    progress_bar(5, 100, 200, 18, u.chatgpt_pct, bar_color(u.chatgpt_pct));
+    // 标题
+    dirty |= drawField(c.subline, sizeof(c.subline), "ChatGPT Plus",
+                       5, 70, 16, F24, COLOR_TITLE);
+    // 进度条 + 百分比
+    dirty |= drawBar(&c.chatgpt_bar_w, u.chatgpt_pct, 5, 100, 200, 18,
+                     bar_color(u.chatgpt_pct));
+    char buf[16];
     snprintf(buf, sizeof(buf), "%d%%", u.chatgpt_pct);
-    txt(210, 102, buf, COLOR_TITLE, F16);
+    dirty |= drawField(c.title, sizeof(c.title), buf, 210, 102, 6, F16, COLOR_TITLE);
 
-    txt(5, 135, "Claude Pro", COLOR_TITLE, F24);
-    progress_bar(5, 165, 200, 18, u.claude_pct, bar_color(u.claude_pct));
+    dirty |= drawField(c.hint, sizeof(c.hint), "Claude Pro",
+                       5, 135, 16, F24, COLOR_TITLE);
+    dirty |= drawBar(&c.claude_bar_w, u.claude_pct, 5, 165, 200, 18,
+                     bar_color(u.claude_pct));
     snprintf(buf, sizeof(buf), "%d%%", u.claude_pct);
-    txt(210, 167, buf, COLOR_TITLE, F16);
+    dirty |= drawField(c.temp, sizeof(c.temp), buf, 210, 167, 6, F16, COLOR_TITLE);
 
-    txt(5, 220, "(Mock data)", COLOR_DIM, F16);
-    txt(5, 245, "P1: cc-switch API", COLOR_DIM, F16);
-    txt(5, 295, "[A] Next", COLOR_DIM, F16);
+    dirty |= drawField(c.batt, sizeof(c.batt), "(Mock data)",      5, 220, 22, F16, COLOR_DIM);
+    dirty |= drawField(c.comfort, sizeof(c.comfort), "P1: cc-switch API", 5, 245, 22, F16, COLOR_DIM);
+    dirty |= drawField(c.humid, sizeof(c.humid), "[A] Next",         5, 295, 22, F16, COLOR_DIM);
+    return dirty;
 }
 
-void render_portrait_environment() {
-    k10.canvas->canvasClear();
+static bool render_portrait_environment() {
+    PageCache& c = g_cache[PAGE_PORTRAIT_ENVIRONMENT];
+    bool dirty = false;
 
-    txt(5, 5, "Environment", COLOR_TITLE, F24);
-    draw_status_bar();
-    line_h(5, 55, 235, COLOR_DIM);
+    drawOnce(&c.ever_drawn, 5, 5, "Environment", COLOR_TITLE, F24);
+    drawOnceLine(&c.ever_drawn, 5, 55, 235, COLOR_DIM);
+    dirty |= draw_status_bar(PAGE_PORTRAIT_ENVIRONMENT);
 
     const auto aht = g_sensors.aht20();
     const auto lux = g_sensors.ltr303();
     char buf[40];
-    int y = 70;
 
     if (aht.valid) {
         snprintf(buf, sizeof(buf), "%.1f", aht.temperatureC);
-        txt(20, y, buf, COLOR_NORMAL, F24);
-        txt(120, y, "C", COLOR_DIM, F24);
-    } else {
-        txt(20, y, "--", COLOR_DIM, F24);
-    }
-    y += 45;
-
-    if (aht.valid) {
+        dirty |= drawField(c.bigtemp, sizeof(c.bigtemp), buf, 20, 70, 8, F24, COLOR_NORMAL);
+        dirty |= drawField(c.bigunit, sizeof(c.bigunit), "C",   120, 70, 2, F24, COLOR_DIM);
         snprintf(buf, sizeof(buf), "Humid %.1f %%", aht.humidityPct);
-        txt(5, y, buf, COLOR_ACCENT, F24); y += 32;
+        dirty |= drawField(c.humid, sizeof(c.humid), buf, 5, 120, 18, F24, COLOR_ACCENT);
+    } else {
+        dirty |= drawField(c.bigtemp, sizeof(c.bigtemp), "--", 20, 70, 8, F24, COLOR_DIM);
     }
 
     snprintf(buf, sizeof(buf), "Light %d lx", (int)lux.lux);
-    txt(5, y, buf, COLOR_ACCENT, F24); y += 32;
+    dirty |= drawField(c.light, sizeof(c.light), buf, 5, 160, 18, F24, COLOR_ACCENT);
 
     if (aht.valid) {
         const char* comfort = "Normal";
-        uint32_t c = COLOR_WARN;
+        uint32_t c_c = COLOR_WARN;
         if (aht.temperatureC > 18 && aht.temperatureC < 28 &&
             aht.humidityPct > 30 && aht.humidityPct < 70) {
             comfort = "Comfort";
-            c = COLOR_NORMAL;
+            c_c = COLOR_NORMAL;
         }
         snprintf(buf, sizeof(buf), "Feel: %s", comfort);
-        txt(5, y, buf, c, F24);
+        dirty |= drawField(c.comfort, sizeof(c.comfort), buf, 5, 200, 18, F24, c_c);
+    } else {
+        dirty |= drawField(c.comfort, sizeof(c.comfort), "Feel: --", 5, 200, 18, F24, COLOR_DIM);
     }
 
-    txt(5, 295, "[A] Next", COLOR_DIM, F16);
+    dirty |= drawField(c.hint, sizeof(c.hint), "[A] Next", 5, 295, 22, F16, COLOR_DIM);
+    return dirty;
 }
 
-void render_portrait_settings() {
-    k10.canvas->canvasClear();
+static bool render_portrait_settings() {
+    PageCache& c = g_cache[PAGE_PORTRAIT_SETTINGS];
+    bool dirty = false;
 
-    txt(5, 5, "Settings", COLOR_TITLE, F24);
-    draw_status_bar();
-    line_h(5, 55, 235, COLOR_DIM);
+    drawOnce(&c.ever_drawn, 5, 5, "Settings", COLOR_TITLE, F24);
+    drawOnceLine(&c.ever_drawn, 5, 55, 235, COLOR_DIM);
+    dirty |= draw_status_bar(PAGE_PORTRAIT_SETTINGS);
 
-    int y = 65;
-    txt(5, y, "Power   Balanced", COLOR_NORMAL, F24); y += 28;
-    txt(5, y, "  30s / 90s", COLOR_DIM, F16); y += 28;
-    txt(5, y, "Sync    Battery", COLOR_NORMAL, F24); y += 28;
-    txt(5, y, "  22min / 60min", COLOR_DIM, F16); y += 28;
-    txt(5, y, "Density Normal", COLOR_NORMAL, F24); y += 28;
-    txt(5, y, "Rotate  Auto", COLOR_NORMAL, F24); y += 28;
-    txt(5, y, "Theme   Dark", COLOR_NORMAL, F24);
-
-    txt(5, 295, "[A+B] Factory reset", COLOR_ALERT, F16);
+    // 全是静态文本；用 ever_drawn 守门
+    static const char* lines[] = {
+        "Power   Balanced",  "  30s / 90s",
+        "Sync    Battery",   "  22min / 60min",
+        "Density Normal",
+        "Rotate  Auto",
+        "Theme   Dark",
+    };
+    if (!c.ever_drawn) {
+        int y = 65;
+        for (uint8_t i = 0; i < 5; ++i) {
+            k10.canvas->canvasText(lines[i], 5, y, COLOR_NORMAL, F24, 50, false);
+            y += 28;
+        }
+        k10.canvas->canvasText("[A+B] Factory reset", 5, 295, COLOR_ALERT, F16, 50, false);
+        c.ever_drawn = true;
+        dirty = true;
+    }
+    return dirty;
 }
 
 // ---------------------------------------------------------------------------
-// 横屏页面（简版，仍在 240x320 canvas 上画）
+// 横屏页面
 // ---------------------------------------------------------------------------
-void render_landscape_overview() {
-    k10.canvas->canvasClear();
-    txt(5, 5, "DeskNest", COLOR_TITLE, F24);
-    draw_status_bar();
-
+static bool render_landscape_overview() {
+    PageCache& c = g_cache[PAGE_LANDSCAPE_OVERVIEW];
+    bool dirty = false;
+    drawOnce(&c.ever_drawn, 5, 5, "DeskNest", COLOR_TITLE, F24);
+    dirty |= draw_status_bar(PAGE_LANDSCAPE_OVERVIEW);
     const auto aht = g_sensors.aht20();
     char buf[40];
     if (aht.valid) {
-        snprintf(buf, sizeof(buf), "%.1fC %.1f%%",
-                 aht.temperatureC, aht.humidityPct);
-        txt(5, 60, buf, COLOR_NORMAL, F24);
+        snprintf(buf, sizeof(buf), "%.1fC %.1f%%", aht.temperatureC, aht.humidityPct);
+        dirty |= drawField(c.temp, sizeof(c.temp), buf, 5, 60, 16, F24, COLOR_NORMAL);
+    } else {
+        dirty |= drawField(c.temp, sizeof(c.temp), "--", 5, 60, 16, F24, COLOR_DIM);
     }
-    txt(5, 295, "[A] Next", COLOR_DIM, F16);
+    dirty |= drawField(c.hint, sizeof(c.hint), "[A] Next", 5, 295, 22, F16, COLOR_DIM);
+    return dirty;
 }
 
-void render_landscape_focus() {
-    k10.canvas->canvasClear();
-    txt(5, 5, "AI Focus", COLOR_TITLE, F24);
-    draw_status_bar();
-
+static bool render_landscape_focus() {
+    PageCache& c = g_cache[PAGE_LANDSCAPE_FOCUS];
+    bool dirty = false;
+    drawOnce(&c.ever_drawn, 5, 5, "AI Focus", COLOR_TITLE, F24);
+    dirty |= draw_status_bar(PAGE_LANDSCAPE_FOCUS);
     AiUsage u = mock_ai_usage(millis());
-    char buf[20];
+    char buf[24];
     snprintf(buf, sizeof(buf), "ChatGPT %d%%", u.chatgpt_pct);
-    txt(5, 60, buf, COLOR_NORMAL, F24);
-    progress_bar(5, 90, 200, 16, u.chatgpt_pct, bar_color(u.chatgpt_pct));
+    dirty |= drawField(c.subline, sizeof(c.subline), buf, 5, 60, 16, F24, COLOR_NORMAL);
+    dirty |= drawBar(&c.chatgpt_bar_w, u.chatgpt_pct, 5, 90, 200, 16,
+                     bar_color(u.chatgpt_pct));
     snprintf(buf, sizeof(buf), "Claude %d%%", u.claude_pct);
-    txt(5, 120, buf, COLOR_NORMAL, F24);
-    progress_bar(5, 150, 200, 16, u.claude_pct, bar_color(u.claude_pct));
-
-    txt(5, 295, "[A] Next", COLOR_DIM, F16);
+    dirty |= drawField(c.hint, sizeof(c.hint), buf, 5, 120, 16, F24, COLOR_NORMAL);
+    dirty |= drawBar(&c.claude_bar_w, u.claude_pct, 5, 150, 200, 16,
+                     bar_color(u.claude_pct));
+    return dirty;
 }
 
-void render_landscape_custom() {
-    k10.canvas->canvasClear();
-    txt(5, 5, "Custom", COLOR_TITLE, F24);
-    draw_status_bar();
-    txt(5, 120, "(P1 user config)", COLOR_DIM, F24);
-    txt(5, 295, "[A] Next", COLOR_DIM, F16);
+static bool render_landscape_custom() {
+    PageCache& c = g_cache[PAGE_LANDSCAPE_CUSTOM];
+    bool dirty = false;
+    drawOnce(&c.ever_drawn, 5, 5, "Custom", COLOR_TITLE, F24);
+    dirty |= draw_status_bar(PAGE_LANDSCAPE_CUSTOM);
+    dirty |= drawField(c.subline, sizeof(c.subline), "(P1 user config)",
+                       5, 120, 22, F24, COLOR_DIM);
+    dirty |= drawField(c.hint, sizeof(c.hint), "[A] Next", 5, 295, 22, F16, COLOR_DIM);
+    return dirty;
 }
 
 // ---------------------------------------------------------------------------
 // 特殊页
 // ---------------------------------------------------------------------------
-void render_face_down() {
-    k10.canvas->canvasClear();
-    // 三行 slogan 居中（短行用 24px）
-    txt(40, 120, "Perched on desk,", COLOR_DIM, F24);
-    txt(20, 150, "dormant between", COLOR_DIM, F24);
-    txt(70, 180, "wake-ups.", COLOR_DIM, F24);
-}
-
-void render_config_portal() {
-    k10.canvas->canvasClear();
-    txt(5, 5, "WiFi Setup", COLOR_TITLE, F24);
-    draw_status_bar();
-    line_h(5, 55, 235, COLOR_DIM);
-
-    txt(5, 80, "Connect to:", COLOR_TITLE, F24);
-    txt(5, 110, "DeskNest-XXXX", COLOR_ACCENT, F24);
-    txt(5, 160, "Open browser:", COLOR_TITLE, F24);
-    txt(5, 190, "192.168.4.1", COLOR_ACCENT, F24);
-}
-
-// ---------------------------------------------------------------------------
-// 调度 + RGB
-// ---------------------------------------------------------------------------
-UIPage   g_last_page = PAGE_COUNT;
-uint32_t g_last_ms   = 0;
-
-void render_dispatch() {
-    const UIPage p = g_state.snapshot().page;
-    switch (p) {
-        case PAGE_PORTRAIT_OVERVIEW:    render_portrait_overview();   break;
-        case PAGE_PORTRAIT_AI_USAGE:    render_portrait_ai_usage();   break;
-        case PAGE_PORTRAIT_ENVIRONMENT: render_portrait_environment();break;
-        case PAGE_PORTRAIT_SETTINGS:    render_portrait_settings();   break;
-        case PAGE_LANDSCAPE_OVERVIEW:   render_landscape_overview();  break;
-        case PAGE_LANDSCAPE_FOCUS:      render_landscape_focus();     break;
-        case PAGE_LANDSCAPE_CUSTOM:     render_landscape_custom();    break;
-        case PAGE_SLEEP_FACE_DOWN:      render_face_down();           break;
-        case PAGE_CONFIG_PORTAL:        render_config_portal();       break;
-        default: break;
+static bool render_face_down() {
+    PageCache& c = g_cache[PAGE_SLEEP_FACE_DOWN];
+    bool dirty = false;
+    if (!c.ever_drawn) {
+        k10.canvas->canvasClear();  // 翻面后进 roost，整个 canvas 黑底
+        c.ever_drawn = true;
+        dirty = true;
     }
-    // 关键：lv_task_handler 才会把 canvas buffer 推到 TFT。否则屏全黑。
-    k10.canvas->updateCanvas();
-    g_last_page = p;
-    g_last_ms   = millis();
+    dirty |= drawField(c.slogan1, sizeof(c.slogan1), "Perched on desk,",  40, 120, 18, F24, COLOR_DIM);
+    dirty |= drawField(c.slogan2, sizeof(c.slogan2), "dormant between",   20, 150, 18, F24, COLOR_DIM);
+    dirty |= drawField(c.slogan3, sizeof(c.slogan3), "wake-ups.",         70, 180, 12, F24, COLOR_DIM);
+    return dirty;
 }
 
-// RGB 全灭（P0-D 简化，避免干扰）。后续 P1 再按状态点亮。
+static bool render_config_portal() {
+    PageCache& c = g_cache[PAGE_CONFIG_PORTAL];
+    bool dirty = false;
+    drawOnce(&c.ever_drawn, 5, 5, "WiFi Setup", COLOR_TITLE, F24);
+    drawOnceLine(&c.ever_drawn, 5, 55, 235, COLOR_DIM);
+    dirty |= draw_status_bar(PAGE_CONFIG_PORTAL);
+    dirty |= drawField(c.subline, sizeof(c.subline), "Connect to:", 5, 80, 16, F24, COLOR_TITLE);
+    dirty |= drawField(c.ssid_line, sizeof(c.ssid_line), "DeskNest-XXXX", 5, 110, 16, F24, COLOR_ACCENT);
+    dirty |= drawField(c.hint, sizeof(c.hint), "Open browser:", 5, 160, 16, F24, COLOR_TITLE);
+    dirty |= drawField(c.url_line, sizeof(c.url_line), "192.168.4.1", 5, 190, 14, F24, COLOR_ACCENT);
+    return dirty;
+}
+
+// ---------------------------------------------------------------------------
+// 调度
+// ---------------------------------------------------------------------------
+static bool render_dispatch(UIPage p) {
+    switch (p) {
+        case PAGE_PORTRAIT_OVERVIEW:    return render_portrait_overview();
+        case PAGE_PORTRAIT_AI_USAGE:    return render_portrait_ai_usage();
+        case PAGE_PORTRAIT_ENVIRONMENT: return render_portrait_environment();
+        case PAGE_PORTRAIT_SETTINGS:    return render_portrait_settings();
+        case PAGE_LANDSCAPE_OVERVIEW:   return render_landscape_overview();
+        case PAGE_LANDSCAPE_FOCUS:      return render_landscape_focus();
+        case PAGE_LANDSCAPE_CUSTOM:     return render_landscape_custom();
+        case PAGE_SLEEP_FACE_DOWN:      return render_face_down();
+        case PAGE_CONFIG_PORTAL:        return render_config_portal();
+        default:                        return false;
+    }
+}
+
 void rgb_off() {
     static bool done = false;
     if (done) return;
@@ -363,21 +455,27 @@ void dn_ui_setup() {
     k10.setScreenBackground(COLOR_BG);
     k10.canvas->canvasClear();
     k10.canvas->updateCanvas();
-    Serial.println("[D][UI] screen ready (dir=2, canvas 240x320)");
+    Serial.println("[D][UI] screen ready (dir=2, canvas 240x320, dirty-update)");
 
     k10.rgb->write(-1, RGB_OFF);
+    for (uint8_t i = 0; i < PAGE_COUNT; ++i) g_cache[i] = PageCache();
+    g_last_page = PAGE_COUNT;
 }
 
 void dn_ui_render() {
     using namespace desknest;
-    const uint32_t now = millis();
     const UIPage cur = g_state.snapshot().page;
 
-    const bool page_changed = (cur != g_last_page);
-    const bool due = (now - g_last_ms >= 1000);
+    // 翻页：清屏 + 整页重画（cache 已重置，render_dispatch 会全画）
+    if (cur != g_last_page) {
+        k10.canvas->canvasClear();
+        g_cache[cur] = PageCache();      // 强制全画
+        g_last_page = cur;
+    }
 
-    if (page_changed || due) {
-        render_dispatch();
+    // 字段级 diff 更新；没变就不动
+    if (render_dispatch(cur)) {
+        k10.canvas->updateCanvas();      // 只有真改了才推 SPI
     }
     rgb_off();
 }

@@ -29,8 +29,9 @@ GestureTuning g_tuning = {
     .rotate_stable_ms    = defaults::T_ROTATE_STABLE_MS,      // 400
     .rotate_cooldown_ms  = 1000,
     // 摇动
-    .shake_threshold     = defaults::G_SHAKE_THRESHOLD,       // 1.5
-    .shake_window_ms     = 200,
+    .shake_threshold     = 0.8f,                              // 旧版单峰阈值 1.5g 偏严；
+                                                               // 新版用零交叉 + 峰值，0.8g 已能区分"真摇动"和噪声
+    .shake_window_ms     = 300,                               // 略放宽窗口到 300ms 容下 3-4 次摆
     .shake_cooldown_ms   = defaults::T_SHAKE_COOLDOWN_MS,    // 600
     // Tap
     .tap_z_high          = 1.2f,
@@ -56,6 +57,12 @@ void GestureEngine::begin() {
     _face_up_since_ms     = 0;
     _tap_prev_gz          = 1.0f;
 
+    // 摇动环形缓冲也清掉
+    for (uint8_t i = 0; i < SHAKE_BUF; ++i) _shake_ax_buf[i] = 0;
+    _shake_idx         = 0;
+    _shake_filled      = false;
+    _shake_win_start_ms = 0;
+
     // 滑动窗也清空，避免上一步的残值污染本步
     _wx.reset();
     _wy.reset();
@@ -80,23 +87,60 @@ OrientationState GestureEngine::classifyOrientation_(float ax, float ay) const {
     return _orient.value();  // 中间地带：保持当前
 }
 
-bool GestureEngine::detectShake_(float a_mag, uint32_t now_ms) {
-    // shake_window_ms 窗口内 |a| > shake_threshold 触发
-    if (now_ms - _peak_window_start_ms > g_tuning.shake_window_ms) {
-        _peak_abs_accel = 0;
-        _peak_window_start_ms = now_ms;
+GestureEvent GestureEngine::detectShake_(float ax, uint32_t now_ms) {
+    // 摇动检测：零交叉计数 + 峰值 + 方向（ax 窗口 sum 的符号）
+    //
+    // 旧版只看 |a| 单峰是否 > shake_threshold（默认 1.5g）；真实摇动时 ax
+    // 反复过零，峰值常到不了 1.5g，且 fire 瞬间 ax 符号随机，谈不上"左/右"。
+    //
+    // 新版（plan §4.2）：
+    //   - 8 样本 ≈ 267ms 窗口内 ax 零交叉 ≥ 2（至少 1 个完整左右摆）
+    //   - 窗口内 |ax| 峰值 > shake_threshold（默认 0.8g；wizard 可调）
+    //   - 方向 = sum(ax) 符号：sum>0 → 主导正向 → SHAKE_LEFT
+    //   - 冷却 600ms 防抖
+
+    // 1) 窗口超时 → 标记为"待重新累积"（不动 _shake_idx，让它继续环形写）
+    if (_shake_filled && (now_ms - _shake_win_start_ms) > g_tuning.shake_window_ms) {
+        _shake_filled = false;
+        _shake_idx = 0;       // 重新从 0 开始累积（之前的 8 样本作废）
     }
-    if (a_mag > _peak_abs_accel) {
-        _peak_abs_accel = a_mag;
+
+    // 2) 写一帧；首帧（_shake_idx==0 && !_shake_filled）记下窗口起点
+    if (_shake_idx == 0 && !_shake_filled) {
+        _shake_win_start_ms = now_ms;
     }
-    if (_peak_abs_accel > g_tuning.shake_threshold) {
-        if (now_ms - _last_shake_ms >= g_tuning.shake_cooldown_ms) {
-            _last_shake_ms = now_ms;
-            _peak_abs_accel = 0;
-            return true;
-        }
+    _shake_ax_buf[_shake_idx] = ax;
+    _shake_idx = (_shake_idx + 1) % SHAKE_BUF;
+    if (_shake_idx == 0) _shake_filled = true;
+    if (!_shake_filled) return GESTURE_NONE;   // 累积未满 8 帧，不判
+
+    // 3) 零交叉 ≥ 2
+    int zc = 0;
+    float prev = _shake_ax_buf[0];
+    for (uint8_t i = 1; i < SHAKE_BUF; ++i) {
+        if ((prev > 0.0f) != (_shake_ax_buf[i] > 0.0f)) zc++;
+        prev = _shake_ax_buf[i];
     }
-    return false;
+    if (zc < 2) return GESTURE_NONE;
+
+    // 4) 窗口内 |ax| 峰值 / sum
+    float peak = 0.0f, sum = 0.0f;
+    for (uint8_t i = 0; i < SHAKE_BUF; ++i) {
+        const float v = _shake_ax_buf[i];
+        if (fabsf(v) > peak) peak = fabsf(v);
+        sum += v;
+    }
+    if (peak < g_tuning.shake_threshold) return GESTURE_NONE;
+
+    // 5) 冷却
+    if (now_ms - _last_shake_ms < g_tuning.shake_cooldown_ms) return GESTURE_NONE;
+
+    // 6) 触发
+    _last_shake_ms  = now_ms;
+    _shake_filled   = false;
+    _shake_idx      = 0;       // 准备下一窗
+    _peak_abs_accel = peak;
+    return (sum > 0.0f) ? GESTURE_SHAKE_LEFT : GESTURE_SHAKE_RIGHT;
 }
 
 bool GestureEngine::detectTap_(const AccelReading& acc, uint32_t now_ms) {
@@ -171,10 +215,10 @@ GestureEvent GestureEngine::update(const AccelReading& acc, uint32_t now_ms) {
         _orient.update(new_orient, now_ms, g_tuning.rotate_stable_ms);
     }
 
-    // 4) 摇动检测
-    if (detectShake_(a_mag, now_ms)) {
-        // 摇动方向：从 x 轴正负判断
-        return (ax > 0) ? GESTURE_SHAKE_LEFT : GESTURE_SHAKE_RIGHT;
+    // 4) 摇动检测 —— 用原始 acc.x（不经滑动平均），否则平滑会压平摇动
+    {
+        GestureEvent sh = detectShake_(acc.x, now_ms);
+        if (sh != GESTURE_NONE) return sh;
     }
 
     // 5) Tap

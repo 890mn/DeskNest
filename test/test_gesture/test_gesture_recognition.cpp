@@ -176,23 +176,94 @@ void test_gesture_rotate_landscape_to_portrait() {
 }
 
 // ===========================================================================
-// 6) 摇动：200ms 窗口内 |a| > 1.5g 触发 SHAKE
+// 6) 摇动：8 样本窗口内 ax 零交叉 ≥ 2 + |ax| 峰值 > shake_threshold
+//    模拟真机摇动：ax 反复过零，正向偏置 → SHAKE_LEFT
 // ===========================================================================
 void test_gesture_shake_detected() {
     GestureEngine g;
     g.begin();
-    feedSettle(g, 0.0f, 1.0f, 0.0f);            // 静止，|a|=1.0
+    feedSettle(g, 0.0f, 1.0f, 0.0f);
 
+    // ax 模式：+0.9, -0.7, +0.9, -0.7, ...  →  每步过零，sum>0
     bool got = false;
-    for (int i = 0; i < 10; ++i) {              // 10*33 = 330ms
-        GestureEvent e = g.update(accel(1.8f, 0.0f, 0.0f), g_mock_millis);
+    for (int i = 0; i < 20; ++i) {              // 20*33 = 660ms
+        const float ax = ((i & 1) == 0) ? +0.9f : -0.7f;
+        GestureEvent e = g.update(accel(ax, 0.0f, 0.0f), g_mock_millis);
         g_mock_millis += 33;
         if (e == GESTURE_SHAKE_LEFT || e == GESTURE_SHAKE_RIGHT) {
             got = true;
+            TEST_ASSERT_EQUAL_MESSAGE(GESTURE_SHAKE_LEFT, e,
+                "expected SHAKE_LEFT (ax sum > 0), got SHAKE_RIGHT");
             break;
         }
     }
-    TEST_ASSERT_TRUE_MESSAGE(got, "shake not detected with |a|=1.8g");
+    TEST_ASSERT_TRUE_MESSAGE(got, "shake (positive-biased ax) not detected");
+}
+
+// ===========================================================================
+// 6b) 摇动方向：ax 负向偏置 → SHAKE_RIGHT
+// ===========================================================================
+void test_gesture_shake_direction_right() {
+    GestureEngine g;
+    g.begin();
+    feedSettle(g, 0.0f, 1.0f, 0.0f);
+
+    bool got = false;
+    for (int i = 0; i < 20; ++i) {
+        const float ax = ((i & 1) == 0) ? -0.9f : +0.7f;   // sum < 0
+        GestureEvent e = g.update(accel(ax, 0.0f, 0.0f), g_mock_millis);
+        g_mock_millis += 33;
+        if (e == GESTURE_SHAKE_LEFT || e == GESTURE_SHAKE_RIGHT) {
+            got = true;
+            TEST_ASSERT_EQUAL_MESSAGE(GESTURE_SHAKE_RIGHT, e,
+                "expected SHAKE_RIGHT (ax sum < 0), got SHAKE_LEFT");
+            break;
+        }
+    }
+    TEST_ASSERT_TRUE_MESSAGE(got, "shake (negative-biased ax) not detected");
+}
+
+// ===========================================================================
+// 6c) 摇动负样本：ax 静止 → 不触发
+// ===========================================================================
+void test_gesture_shake_not_detected_when_steady() {
+    GestureEngine g;
+    g.begin();
+    feedSettle(g, 0.0f, 1.0f, 0.0f);
+
+    bool got = false;
+    for (int i = 0; i < 30; ++i) {              // 990ms of steady ax=0
+        GestureEvent e = g.update(accel(0.0f, 1.0f, 0.0f), g_mock_millis);
+        g_mock_millis += 33;
+        if (e == GESTURE_SHAKE_LEFT || e == GESTURE_SHAKE_RIGHT) {
+            got = true; break;
+        }
+    }
+    TEST_ASSERT_FALSE_MESSAGE(got, "SHAKE fired on steady ax — false positive");
+}
+
+// ===========================================================================
+// 6d) 摇动负样本：ax 振荡但峰值 < shake_threshold → 不触发
+// ===========================================================================
+void test_gesture_shake_not_detected_below_threshold() {
+    GestureEngine g;
+    g.begin();
+    feedSettle(g, 0.0f, 1.0f, 0.0f);
+
+    // 拉低门槛到 0.5g；ax 振幅 0.3g < 0.5g → 不触发
+    g_tuning.shake_threshold = 0.5f;
+
+    bool got = false;
+    for (int i = 0; i < 20; ++i) {
+        const float ax = ((i & 1) == 0) ? +0.3f : -0.3f;
+        GestureEvent e = g.update(accel(ax, 0.0f, 0.0f), g_mock_millis);
+        g_mock_millis += 33;
+        if (e == GESTURE_SHAKE_LEFT || e == GESTURE_SHAKE_RIGHT) {
+            got = true; break;
+        }
+    }
+    TEST_ASSERT_FALSE_MESSAGE(got, "SHAKE fired with peak |ax| < threshold");
+    g_tuning.shake_threshold = 0.8f;  // 恢复默认
 }
 
 // ===========================================================================
@@ -575,6 +646,9 @@ int main(int /*argc*/, char** /*argv*/) {
     RUN_TEST(test_gesture_rotate_portrait_to_landscape);
     RUN_TEST(test_gesture_rotate_landscape_to_portrait);
     RUN_TEST(test_gesture_shake_detected);
+    RUN_TEST(test_gesture_shake_direction_right);
+    RUN_TEST(test_gesture_shake_not_detected_when_steady);
+    RUN_TEST(test_gesture_shake_not_detected_below_threshold);
     RUN_TEST(test_gesture_shake_cooldown_blocks_second);
     RUN_TEST(test_gesture_face_down_roost);
     RUN_TEST(test_gesture_face_up_open);

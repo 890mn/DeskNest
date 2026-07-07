@@ -158,6 +158,13 @@ private:
     float _peak_abs_accel = 0;
     uint32_t _peak_window_start_ms = 0;
 
+    // 摇动检测：ax 环形缓冲 + 窗口起点（用于零交叉计数 / 方向判断）
+    static constexpr uint8_t SHAKE_BUF = 8;        // ≈ 267ms @ 30Hz
+    float    _shake_ax_buf[SHAKE_BUF] = {0};
+    uint8_t  _shake_idx = 0;
+    bool     _shake_filled = false;
+    uint32_t _shake_win_start_ms = 0;
+
     // 翻面 / Tap：跨 update() 持续累加的"何时进入 zone"计时器
     //   之前是 update() 里的 static local，跨实例/跨 begin() 也会泄露；
     //   提为成员后 begin() 可以一并重置，校准 wizard 每步干净起步。
@@ -166,7 +173,8 @@ private:
     float    _tap_prev_gz        = 1.0f;
 
     OrientationState classifyOrientation_(float ax, float ay) const;
-    bool detectShake_(float a_mag, uint32_t now_ms);
+    // 摇动用 raw ax（不用滑动平均）—— 平滑会把反复过零的摇动信号压平
+    GestureEvent detectShake_(float raw_ax, uint32_t now_ms);
     bool detectTap_(const AccelReading& acc, uint32_t now_ms);
 };
 
