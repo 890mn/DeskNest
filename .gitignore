@@ -1,4 +1,6 @@
 .pio
+# PIO 从 .ino 自动生成的中间产物，不入库
+DeskNest.ino.cpp
 # .vscode is machine-local editor state — keep out of VCS
 .vscode/
 
