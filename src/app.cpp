@@ -141,10 +141,8 @@ void dn_app_setup() {
     Serial.println("[D][BOOT] entering SYSTEM_BOOT");
     Serial.println("[D][BOOT] P0-B: initializing sensors...");
     desknest::g_sensors.begin();
-
-    // P0 阶段：跑 3 轴传感器自测，定位"不稳定"问题
-    // 完成后才继续 gesture / state / UI 初始化
-    desknest::g_sensors.selfTest(10000);
+    // （移除开机 selfTest：以前 10s 自测会卡住开机；现在 sensors.begin 本身已包含
+    //   I2C 自检；如有硬件问题靠串口 [D][SENS] 日志排查。）
 
     Serial.println("[D][BOOT] P0-C: initializing gesture + state machine...");
     desknest::g_gesture.begin();

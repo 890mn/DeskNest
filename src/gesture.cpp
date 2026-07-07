@@ -40,6 +40,9 @@ GestureTuning g_tuning = {
     .tap_z_low           = 1.1f,
     .tap_cooldown_ms     = 300,
 
+    // 摇动手势屏蔽：默认关闭，wizard 进入时自动开
+    .gesture_shake_enabled = 0,
+
     // 输出
     .verbose             = 0,             // 默认安静
 };
@@ -230,7 +233,9 @@ GestureEvent GestureEngine::update(const AccelReading& acc, uint32_t now_ms) {
     }
 
     // 4) 摇动检测 —— 用原始 acc.x（不经滑动平均），否则平滑会压平摇动
-    {
+    //    默认 gesture_shake_enabled = 0 —— A/B 按键接管摇动，物理摇动被屏蔽
+    //    wizard 进入时会设 = 1 让用户能物理测试
+    if (g_tuning.gesture_shake_enabled) {
         GestureEvent sh = detectShake_(acc.x, now_ms);
         if (sh != GESTURE_NONE) return sh;
     }

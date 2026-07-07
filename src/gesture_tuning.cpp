@@ -191,6 +191,7 @@ static bool findField(const char* name, fieldref::Ref& ref) {
     if (!strcmp(name, "shake_settle")){ ref.kind = fieldref::F_FLOAT; ref.p.f = &g_tuning.shake_settle_threshold; return true; }
     if (!strcmp(name, "shake_window")){ ref.kind = fieldref::F_U16;   ref.p.u = &g_tuning.shake_window_ms;       return true; }
     if (!strcmp(name, "shake_invert")) { ref.kind = fieldref::F_U8;   ref.p.b = &g_tuning.shake_invert;          return true; }
+    if (!strcmp(name, "shake_en"))    { ref.kind = fieldref::F_U8;   ref.p.b = &g_tuning.gesture_shake_enabled;  return true; }
     if (!strcmp(name, "tap_high"))    { ref.kind = fieldref::F_FLOAT; ref.p.f = &g_tuning.tap_z_high;            return true; }
     if (!strcmp(name, "tap_low"))     { ref.kind = fieldref::F_FLOAT; ref.p.f = &g_tuning.tap_z_low;             return true; }
     if (!strcmp(name, "face_dn_ms"))  { ref.kind = fieldref::F_U16;   ref.p.u = &g_tuning.face_down_stable_ms;   return true; }
@@ -262,6 +263,9 @@ static void printShow() {
     Serial.printf("[D][SHOW] shake_cd   = %u\n",        g_tuning.shake_cooldown_ms);
     Serial.printf("[D][SHOW] shake_inv  = %u  (%s)\n",  g_tuning.shake_invert,
                    g_tuning.shake_invert ? "inverted" : "default ax>0 → LEFT");
+    Serial.printf("[D][SHOW] shake_en   = %u  (%s)\n",  g_tuning.gesture_shake_enabled,
+                   g_tuning.gesture_shake_enabled ? "physical shake ON (wizard)"
+                                                 : "physical shake OFF (A/B buttons take over)");
     Serial.printf("[D][SHOW] tap_high   = %+.3f g\n",  g_tuning.tap_z_high);
     Serial.printf("[D][SHOW] tap_low    = %+.3f g\n",  g_tuning.tap_z_low);
     Serial.printf("[D][SHOW] tap_cd     = %u\n",        g_tuning.tap_cooldown_ms);
@@ -340,6 +344,7 @@ static void cmdReset() {
     g_tuning.shake_window_ms     = 650;
     g_tuning.shake_cooldown_ms   = defaults::T_SHAKE_COOLDOWN_MS;
     g_tuning.shake_invert        = 0;
+    g_tuning.gesture_shake_enabled = 0;   // 默认屏蔽物理摇动，A/B 接管
     g_tuning.tap_z_high          = 1.2f;
     g_tuning.tap_z_low           = 1.1f;
     g_tuning.tap_cooldown_ms     = 300;
@@ -495,7 +500,9 @@ static void processLine(char* line) {
     if (!strcmp(cmd, "exit") || !strcmp(cmd, "quit") || !strcmp(cmd, "q")) {
         if (g_test_state != TEST_OFF) {
             g_test_state = TEST_OFF;
-            Serial.println("  wizard OFF");
+            // 退出 wizard：屏蔽物理摇动，恢复 A/B 操作模式
+            g_tuning.gesture_shake_enabled = 0;
+            Serial.println("  wizard OFF (physical shake re-blocked)");
         } else {
             Serial.println("  (already out of wizard)");
         }
@@ -538,6 +545,8 @@ static void processLine(char* line) {
 
     // Wizard 命令
     if (!strcmp(cmd, "test") || !strcmp(cmd, "t")) {
+        // 进入 wizard：临时开物理摇动，方便用户调 shake 阈值
+        g_tuning.gesture_shake_enabled = 1;
         goStep(0);  // 含 g_gesture.begin() —— 干净起步
         return;
     }

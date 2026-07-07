@@ -119,6 +119,10 @@ struct GestureTuning {
     float    tap_z_low;               // 上一拍 az < 此值（默认 1.1g）
     uint16_t tap_cooldown_ms;         // 两次 tap 最小间隔（默认 300ms）
 
+    // 摇动手势屏蔽
+    uint8_t  gesture_shake_enabled;   // 0 = 屏蔽（默认；用 A/B 代替），
+                                       // 1 = 允许物理摇动（wizard 调参时自动开）
+
     // 输出（不属于手势识别，但 REPL 用来切 app.cpp 的 1Hz 心跳流）
     uint8_t  verbose;                 // 0 = 安静；1 = 1Hz 心跳 + 传感器都打
 };

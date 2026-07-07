@@ -180,6 +180,7 @@ void test_gesture_rotate_landscape_to_portrait() {
 //    方向 = 第一帧 ax 符号（"先动 → 反方向拉回"的初始方向）
 // ===========================================================================
 void test_gesture_shake_detected() {
+    g_tuning.gesture_shake_enabled = 1;  // shake 默认屏蔽；测试时打开
     GestureEngine g;
     g.begin();
     feedSettle(g, 0.0f, 1.0f, 0.0f);
@@ -206,6 +207,7 @@ void test_gesture_shake_detected() {
 // 6b) 摇动方向：ax 初始负向 → SHAKE_RIGHT
 // ===========================================================================
 void test_gesture_shake_direction_right() {
+    g_tuning.gesture_shake_enabled = 1;
     GestureEngine g;
     g.begin();
     feedSettle(g, 0.0f, 1.0f, 0.0f);
@@ -230,6 +232,7 @@ void test_gesture_shake_direction_right() {
 // 6c) 真实甩动：静止 → 首次峰值锁方向 → 反向峰值 → 回稳才提交
 // ===========================================================================
 void test_gesture_shake_waits_for_return_and_settle() {
+    g_tuning.gesture_shake_enabled = 1;
     GestureEngine g;
     g.begin();
     feedSettle(g, 0.0f, 1.0f, 0.0f);
@@ -265,6 +268,7 @@ void test_gesture_shake_waits_for_return_and_settle() {
 }
 
 void test_gesture_shake_settles_at_learned_static_x_offset() {
+    g_tuning.gesture_shake_enabled = 1;
     GestureEngine g;
     g.begin();
 
@@ -291,6 +295,7 @@ void test_gesture_shake_settles_at_learned_static_x_offset() {
 }
 
 void test_gesture_exposes_baseline_and_relative_motion_for_dashboard() {
+    // 测试基线 / 相对运动接口本身（不依赖 shake_en）
     GestureEngine g;
     g.begin();
     feedSettle(g, 0.20f, 0.0f, 0.98f);
@@ -364,6 +369,7 @@ void test_gesture_shake_not_detected_below_threshold() {
 // 7) 摇动冷却：完成后 450ms 内第二次摇动被吞掉
 // ===========================================================================
 void test_gesture_shake_cooldown_blocks_second() {
+    g_tuning.gesture_shake_enabled = 1;
     GestureEngine g;
     g.begin();
     feedSettle(g, 0.0f, 1.0f, 0.0f);
