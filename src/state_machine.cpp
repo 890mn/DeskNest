@@ -71,6 +71,10 @@ void StateMachine::begin() {
 // ============================================================================
 // 各路输入入口（每个独立，从 IDLE 出发）
 // ============================================================================
+//
+// 设计：每个 update*() 都从当前快照 _s 出发独立处理，不互相抑制。
+// 同一帧多路输入都 fire 的情况：由调用方在 update() 里控制顺序，
+// 后调的覆盖前面的（同字段写）。用户可在 platformio.ini 关掉任意一路。
 
 void StateMachine::applyFace_(GestureEvent face, uint32_t now_ms) {
     if (face == GESTURE_FACE_DOWN) {
@@ -83,7 +87,6 @@ void StateMachine::applyFace_(GestureEvent face, uint32_t now_ms) {
         return;
     }
     if (face == GESTURE_FACE_UP_OPEN) {
-        // face-up 不一定知道 orientation —— 让后续 updateOrientation 设
         _s.system = SYSTEM_ACTIVE;
         _s.page   = _s.pre_face_down_page;
         _s.lastInputMs = now_ms;
@@ -101,7 +104,7 @@ void StateMachine::updateFace(GestureEvent face, uint32_t now_ms) {
 
 #if ENABLE_GESTURE_INPUT
 void StateMachine::updateGesture(GestureEvent g, uint32_t now_ms) {
-    // 在 face-down 状态下忽略手势（除非是 FACTORY，从按键来）
+    // face-down 屏蔽手势
     if (_s.system == SYSTEM_FACE_DOWN_SLEEP) return;
     if (g == GESTURE_NONE) return;
     applyGesture_(g, now_ms);
@@ -147,11 +150,15 @@ void StateMachine::tickPowerTimeout(uint32_t now_ms) {
 // ============================================================================
 // update —— 旧入口，按优先级依次调各 update*()
 // ============================================================================
+//
+// 顺序：face → orientation → button → gesture → power
+// 同帧多路：face 最先；其它按调用顺序覆盖（同字段写，后到赢）
+// 注意：button 和 gesture 都不再互相抑制 —— 各自独立处理
 
 void StateMachine::update(GestureEvent g, ButtonEvent b, OrientationState detected,
                           uint32_t now_ms) {
 #if ENABLE_FACE_INPUT
-    updateFace(g, now_ms);   // 翻面最优先
+    updateFace(g, now_ms);
 #endif
 
 #if ENABLE_ORIENTATION_INPUT
@@ -159,12 +166,12 @@ void StateMachine::update(GestureEvent g, ButtonEvent b, OrientationState detect
 #endif
 
 #if ENABLE_BUTTON_INPUT
-    updateButton(b, now_ms);  // 按键优先于手势（同帧抢）
+    updateButton(b, now_ms);
 #endif
 
 #if ENABLE_GESTURE_INPUT
-    // 手势只在按键无事件时跑（避免同帧抢占）
-    if (b == BUTTON_NONE) updateGesture(g, now_ms);
+    // 手势不再被按键抑制 —— 各自独立 fire；同帧后调覆盖前调
+    updateGesture(g, now_ms);
 #endif
 
 #if ENABLE_POWER_TIMEOUT
