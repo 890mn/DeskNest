@@ -83,22 +83,24 @@ void StateMachine::update(GestureEvent g, ButtonEvent b, OrientationState detect
 
     // 1) 翻面 / 打开恢复：最优先
     if (g == GESTURE_FACE_DOWN) {
+        // 进入翻面前先记住当前页面（face-up 时恢复）
+        _s.pre_face_down_page = _s.page;
         _s.orientation = ORIENTATION_FACE_DOWN;
         _s.system      = SYSTEM_FACE_DOWN_SLEEP;
         _s.page        = PAGE_SLEEP_FACE_DOWN;
-        Serial.println("[D][STATE] → FACE_DOWN_SLEEP");
+        Serial.printf("[D][STATE] → FACE_DOWN_SLEEP (saved page %d)\n",
+                      (int)_s.pre_face_down_page);
         return;
     }
     if (g == GESTURE_FACE_UP_OPEN) {
         _s.system = SYSTEM_ACTIVE;
         _s.orientation = detected;  // 用实际姿态
-        _s.page = (detected == ORIENTATION_LANDSCAPE)
-                  ? PAGE_LANDSCAPE_FOCUS
-                  : PAGE_PORTRAIT_OVERVIEW;
+        // 不再强行覆盖 _s.page —— 恢复 face-down 之前的页面
+        _s.page = _s.pre_face_down_page;
         _s.lastInputMs = now_ms;
-        Serial.printf("[D][STATE] → ACTIVE / %s / %s (from face up)\n",
+        Serial.printf("[D][STATE] → ACTIVE / %s / page %d (from face up)\n",
                       detected == ORIENTATION_LANDSCAPE ? "LANDSCAPE" : "PORTRAIT",
-                      _s.page == PAGE_LANDSCAPE_FOCUS ? "FOCUS" : "OVERVIEW");
+                      (int)_s.page);
         return;
     }
 
@@ -280,20 +282,26 @@ void StateMachine::applyOrientation_(OrientationState detected, uint32_t now_ms)
     if (_s.rotLock == ROT_LOCKED_PORTRAIT && detected == ORIENTATION_LANDSCAPE) return;
     if (_s.rotLock == ROT_LOCKED_LANDSCAPE && detected == ORIENTATION_PORTRAIT) return;
 
-    // 切换：跳到对应姿态的默认页
+    // 切换：跳到对应姿态的默认页，但保留原页面以便转回来时恢复
     const OrientationState old = _s.orientation;
     _s.orientation = detected;
     if (detected == ORIENTATION_LANDSCAPE) {
         if (old == ORIENTATION_PORTRAIT) {
+            // 转横屏：记下原 portrait 页，去横屏默认页
+            _s.pre_landscape_page = _s.page;
             _s.page = PAGE_LANDSCAPE_FOCUS;
         }
     } else {
         if (old == ORIENTATION_LANDSCAPE) {
-            _s.page = PAGE_PORTRAIT_OVERVIEW;
+            // 转回竖屏：恢复 P→L 之前那个 portrait 页，不再强制 OVERVIEW
+            _s.page = _s.pre_landscape_page;
         }
     }
-    Serial.printf("[D][STATE] orient %d→%d page=%d\n",
-                  (int)old, (int)detected, (int)_s.page);
+    Serial.printf("[D][STATE] orient %d→%d page=%d (saved=%d)\n",
+                  (int)old, (int)detected, (int)_s.page,
+                  detected == ORIENTATION_LANDSCAPE
+                      ? (int)_s.pre_landscape_page
+                      : (int)_s.pre_landscape_page);
     (void)now_ms;
 }
 

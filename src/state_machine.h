@@ -19,6 +19,11 @@ struct StateSnapshot {
     UIPage           page;
     RotationLock     rotLock;
     uint32_t         lastInputMs;
+
+    // 进入特殊状态前的页面（face-down / landscape 切换时保留原页面，
+    // 醒来或转回来时恢复，不打断用户正常导航）
+    UIPage           pre_face_down_page = PAGE_PORTRAIT_OVERVIEW;
+    UIPage           pre_landscape_page = PAGE_LANDSCAPE_OVERVIEW;
 };
 
 class StateMachine {
