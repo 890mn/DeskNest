@@ -1,0 +1,11 @@
+.pio
+# .vscode is machine-local editor state — keep out of VCS
+.vscode/
+
+# Machine-local Claude permissions — keep out of VCS
+.claude/settings.local.json
+
+# Development markdown — keep out of VCS
+# (README.md is the public project readme and stays tracked.)
+new.md
+docs/
