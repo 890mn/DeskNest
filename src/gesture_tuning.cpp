@@ -83,7 +83,7 @@ static const GestureStep STEPS[] = {
     { "shake",
       GESTURE_SHAKE_LEFT,            // 也接受 _RIGHT
       2000,
-      "左右摇一摇 3-4 次（ax 反复过零；至少 1 个完整摆动）",
+      "朝一个方向快速移动，再反方向拉回（一次完整动作）；方向 = 第一次动的方向",
       { "shake", "shake_cd" }, 2 },
 
     { "tap",
@@ -104,6 +104,8 @@ static float        g_sum_a  = 0,  g_min_a  =  1e9f, g_max_a  = -1e9f;
 static uint32_t     g_samples = 0;
 static GestureEvent g_fired     = GESTURE_NONE;
 static uint32_t     g_fired_at  = 0;
+static float        g_first_ax  = 0;     // 录到的第一条 ax —— shake 方向依据
+static bool         g_have_first_ax = false;
 
 // ---------------------------------------------------------------------------
 // 字符串工具
@@ -340,6 +342,8 @@ static void startCapture() {
     g_samples = 0;
     g_fired   = GESTURE_NONE;
     g_fired_at = 0;
+    g_have_first_ax = false;
+    g_first_ax = 0;
     // begin() 重置了所有冷却、滑动窗、跨帧计时器 —— 干净起步
     g_gesture.begin();
     Serial.printf("  ⏺ recording up to %u ms, do it now...\n",
@@ -373,6 +377,12 @@ static void endCapture(bool force) {
                 && (g_fired == GESTURE_SHAKE_LEFT || g_fired == GESTURE_SHAKE_RIGHT));
         Serial.printf("  fired   : %s @ +%lu ms  (expect %s)\n",
                       gestureEventName(g_fired), t, gestureEventName(s.expected));
+        // shake 步骤额外显示 first_ax（初始移动方向）—— 用户能直观对应 LEFT/RIGHT
+        if (g_have_first_ax && (g_fired == GESTURE_SHAKE_LEFT || g_fired == GESTURE_SHAKE_RIGHT)) {
+            Serial.printf("  first ax: %+.2f  → 初始%s方向\n",
+                          g_first_ax, g_first_ax > 0 ? "正向" : "负向");
+            Serial.println("  (若方向反了：set shake_invert 1 — 暂未暴露，运行后调源码)");
+        }
         Serial.println(matches ? "  ✓ OK" : "  ✗ MISMATCH  → 调上面 🎛 字段再试");
     } else {
         Serial.println("  fired   : (none)");
@@ -550,6 +560,10 @@ void dn_tuning_post_step(uint32_t now_ms, const AccelReading& acc, GestureEvent 
     // 3) Wizard 录制
     if (g_test_state == TEST_CAPTURING) {
         if (acc.valid) {
+            if (!g_have_first_ax) {
+                g_first_ax = acc.x;
+                g_have_first_ax = true;
+            }
             const float a = sqrtf(acc.x*acc.x + acc.y*acc.y + acc.z*acc.z);
             if (acc.z < g_min_az) g_min_az = acc.z;
             if (acc.z > g_max_az) g_max_az = acc.z;

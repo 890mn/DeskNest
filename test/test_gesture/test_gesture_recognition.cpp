@@ -177,50 +177,53 @@ void test_gesture_rotate_landscape_to_portrait() {
 
 // ===========================================================================
 // 6) 摇动：8 样本窗口内 ax 零交叉 ≥ 2 + |ax| 峰值 > shake_threshold
-//    模拟真机摇动：ax 反复过零，正向偏置 → SHAKE_LEFT
+//    方向 = 第一帧 ax 符号（"先动 → 反方向拉回"的初始方向）
 // ===========================================================================
 void test_gesture_shake_detected() {
     GestureEngine g;
     g.begin();
     feedSettle(g, 0.0f, 1.0f, 0.0f);
 
-    // ax 模式：+0.9, -0.7, +0.9, -0.7, ...  →  每步过零，sum>0
+    // 模拟：先向右推（+ax），再反方向拉回（-ax），最后几次小摆
+    // 8 样本：+0.9, -0.9, +0.5, -0.3, -0.1, -0.1, 0.0, 0.0
+    //   → 零交叉 ≥ 2；峰值 0.9 > 0.8；第一帧 + → SHAKE_LEFT
+    const float seq[] = { +0.9f, -0.9f, +0.5f, -0.3f, -0.1f, -0.1f, 0.0f, 0.0f };
     bool got = false;
-    for (int i = 0; i < 20; ++i) {              // 20*33 = 660ms
-        const float ax = ((i & 1) == 0) ? +0.9f : -0.7f;
-        GestureEvent e = g.update(accel(ax, 0.0f, 0.0f), g_mock_millis);
+    for (uint8_t i = 0; i < sizeof(seq)/sizeof(seq[0]); ++i) {
+        GestureEvent e = g.update(accel(seq[i], 0.0f, 0.0f), g_mock_millis);
         g_mock_millis += 33;
         if (e == GESTURE_SHAKE_LEFT || e == GESTURE_SHAKE_RIGHT) {
             got = true;
             TEST_ASSERT_EQUAL_MESSAGE(GESTURE_SHAKE_LEFT, e,
-                "expected SHAKE_LEFT (ax sum > 0), got SHAKE_RIGHT");
+                "expected SHAKE_LEFT (first ax = +0.9), got SHAKE_RIGHT");
             break;
         }
     }
-    TEST_ASSERT_TRUE_MESSAGE(got, "shake (positive-biased ax) not detected");
+    TEST_ASSERT_TRUE_MESSAGE(got, "shake (first ax positive) not detected");
 }
 
 // ===========================================================================
-// 6b) 摇动方向：ax 负向偏置 → SHAKE_RIGHT
+// 6b) 摇动方向：ax 初始负向 → SHAKE_RIGHT
 // ===========================================================================
 void test_gesture_shake_direction_right() {
     GestureEngine g;
     g.begin();
     feedSettle(g, 0.0f, 1.0f, 0.0f);
 
+    // 镜像：先向左推（-ax），再反方向拉回（+ax）
+    const float seq[] = { -0.9f, +0.9f, -0.5f, +0.3f, +0.1f, +0.1f, 0.0f, 0.0f };
     bool got = false;
-    for (int i = 0; i < 20; ++i) {
-        const float ax = ((i & 1) == 0) ? -0.9f : +0.7f;   // sum < 0
-        GestureEvent e = g.update(accel(ax, 0.0f, 0.0f), g_mock_millis);
+    for (uint8_t i = 0; i < sizeof(seq)/sizeof(seq[0]); ++i) {
+        GestureEvent e = g.update(accel(seq[i], 0.0f, 0.0f), g_mock_millis);
         g_mock_millis += 33;
         if (e == GESTURE_SHAKE_LEFT || e == GESTURE_SHAKE_RIGHT) {
             got = true;
             TEST_ASSERT_EQUAL_MESSAGE(GESTURE_SHAKE_RIGHT, e,
-                "expected SHAKE_RIGHT (ax sum < 0), got SHAKE_LEFT");
+                "expected SHAKE_RIGHT (first ax = -0.9), got SHAKE_LEFT");
             break;
         }
     }
-    TEST_ASSERT_TRUE_MESSAGE(got, "shake (negative-biased ax) not detected");
+    TEST_ASSERT_TRUE_MESSAGE(got, "shake (first ax negative) not detected");
 }
 
 // ===========================================================================

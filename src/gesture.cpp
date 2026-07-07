@@ -123,12 +123,11 @@ GestureEvent GestureEngine::detectShake_(float ax, uint32_t now_ms) {
     }
     if (zc < 2) return GESTURE_NONE;
 
-    // 4) 窗口内 |ax| 峰值 / sum
-    float peak = 0.0f, sum = 0.0f;
+    // 4) 窗口内 |ax| 峰值
+    float peak = 0.0f;
     for (uint8_t i = 0; i < SHAKE_BUF; ++i) {
         const float v = _shake_ax_buf[i];
         if (fabsf(v) > peak) peak = fabsf(v);
-        sum += v;
     }
     if (peak < g_tuning.shake_threshold) return GESTURE_NONE;
 
@@ -136,11 +135,17 @@ GestureEvent GestureEngine::detectShake_(float ax, uint32_t now_ms) {
     if (now_ms - _last_shake_ms < g_tuning.shake_cooldown_ms) return GESTURE_NONE;
 
     // 6) 触发
+    //   方向语义：用户先动 → 反方向拉回 = 一次完整摇动
+    //   方向 = 第一帧 ax 的符号（用户初始移动方向）
+    //   - ax[0] > 0  → GESTURE_SHAKE_LEFT  (约定：正 ax 对应"左")
+    //   - ax[0] < 0  → GESTURE_SHAKE_RIGHT
+    //   真机如果方向反了，wizard 会把 first_ax 显示出来，用户可以
+    //   通过 g_tuning.shake_invert 或者改这里调整。
     _last_shake_ms  = now_ms;
     _shake_filled   = false;
     _shake_idx      = 0;       // 准备下一窗
     _peak_abs_accel = peak;
-    return (sum > 0.0f) ? GESTURE_SHAKE_LEFT : GESTURE_SHAKE_RIGHT;
+    return (_shake_ax_buf[0] > 0.0f) ? GESTURE_SHAKE_LEFT : GESTURE_SHAKE_RIGHT;
 }
 
 bool GestureEngine::detectTap_(const AccelReading& acc, uint32_t now_ms) {

@@ -173,7 +173,7 @@ uint32_t bar_color(int pct) {
 }
 
 // ---------------------------------------------------------------------------
-// 通用：每页都画 status bar
+// 通用：每页都画 status bar + 页码指示
 // ---------------------------------------------------------------------------
 static bool draw_status_bar(UIPage p) {
     PageCache& c = g_cache[p];
@@ -182,7 +182,14 @@ static bool draw_status_bar(UIPage p) {
     uint32_t idle_s = (millis() - s.lastInputMs) / 1000;
     snprintf(buf, sizeof(buf), "[%s] idle=%lus",
              sys_str(s.system), (unsigned long)idle_s);
-    return drawField(c.status, sizeof(c.status), buf, 5, 33, 28, F16, COLOR_DIM);
+    bool dirty = drawField(c.status, sizeof(c.status), buf, 5, 33, 28, F16, COLOR_DIM);
+
+    // 页码 Pn/N —— 右上角，让用户一眼知道是第几页
+    //   用 F24 字模凸显；只有 8 个 port page，值变化少，cache 命中率高
+    char pbuf[8];
+    snprintf(pbuf, sizeof(pbuf), "P%u/%u", (unsigned)(p + 1), (unsigned)PAGE_COUNT);
+    dirty |= drawField(c.hint, sizeof(c.hint), pbuf, 198, 5, 6, F24, COLOR_ACCENT);
+    return dirty;
 }
 
 // ===========================================================================
