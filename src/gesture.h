@@ -115,6 +115,9 @@ struct GestureTuning {
     float    tap_z_high;              // 当前 az > 此值（默认 1.2g）
     float    tap_z_low;               // 上一拍 az < 此值（默认 1.1g）
     uint16_t tap_cooldown_ms;         // 两次 tap 最小间隔（默认 300ms）
+
+    // 输出（不属于手势识别，但 REPL 用来切 app.cpp 的 1Hz 心跳流）
+    uint8_t  verbose;                 // 0 = 安静；1 = 1Hz 心跳 + 传感器都打
 };
 
 // 全局实例：默认值在 gesture.cpp 里填。REPL 的 'set' / 'reset' 改这个。
@@ -154,6 +157,13 @@ private:
     // 摇动：峰值跟踪
     float _peak_abs_accel = 0;
     uint32_t _peak_window_start_ms = 0;
+
+    // 翻面 / Tap：跨 update() 持续累加的"何时进入 zone"计时器
+    //   之前是 update() 里的 static local，跨实例/跨 begin() 也会泄露；
+    //   提为成员后 begin() 可以一并重置，校准 wizard 每步干净起步。
+    uint32_t _face_down_since_ms = 0;
+    uint32_t _face_up_since_ms   = 0;
+    float    _tap_prev_gz        = 1.0f;
 
     OrientationState classifyOrientation_(float ax, float ay) const;
     bool detectShake_(float a_mag, uint32_t now_ms);

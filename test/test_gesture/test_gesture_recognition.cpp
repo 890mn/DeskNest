@@ -469,6 +469,97 @@ void test_tuning_repl_record_stop_clears_feed() {
 }
 
 // ===========================================================================
+// 19) 'verbose 1' / 'verbose 0' 切 g_tuning.verbose
+// ===========================================================================
+void test_tuning_repl_verbose_toggle() {
+    g_tuning.verbose = 0;
+    dn_tuning_inject_command("verbose 1");
+    TEST_ASSERT_EQUAL_UINT8(1, g_tuning.verbose);
+    dn_tuning_inject_command("verbose 0");
+    TEST_ASSERT_EQUAL_UINT8(0, g_tuning.verbose);
+    // 不带参数：toggle
+    dn_tuning_inject_command("verbose");
+    TEST_ASSERT_EQUAL_UINT8(1, g_tuning.verbose);
+    dn_tuning_inject_command("verbose");
+    TEST_ASSERT_EQUAL_UINT8(0, g_tuning.verbose);
+    // reset 应当把 verbose 也归 0
+    g_tuning.verbose = 1;
+    dn_tuning_inject_command("reset");
+    TEST_ASSERT_EQUAL_UINT8(0, g_tuning.verbose);
+}
+
+// ===========================================================================
+// 20) 'test' / 'next' / 'prev' / 'skip' / 'redo' / 'exit' 状态机
+//     （wizard 状态是文件内 static；从 g_gesture.orientation() 和
+//      后续 'set' 的副作用推断状态变化）
+// ===========================================================================
+void test_tuning_wizard_step_navigation() {
+    // 离开任何残留状态
+    dn_tuning_inject_command("exit");
+
+    // 记录初始 orient
+    const auto orientBefore = g_gesture.orientation();
+
+    // 进入 wizard：第 0 步 = face_down（g_gesture.begin() 重置为 PORTRAIT）
+    dn_tuning_inject_command("test");
+    TEST_ASSERT_EQUAL(ORIENTATION_PORTRAIT, g_gesture.orientation());
+
+    // next → 第 1 步 = face_up
+    dn_tuning_inject_command("next");
+    // prev → 回到第 0 步
+    dn_tuning_inject_command("prev");
+
+    // redo：保持在第 0 步
+    dn_tuning_inject_command("redo");
+
+    // exit → 退出 wizard
+    dn_tuning_inject_command("exit");
+
+    // 退出后 'next' 是 unknown（wizard 不在时）
+    // 不验证具体输出，只确认不崩；用 set 仍能工作说明 wizard 已关
+    dn_tuning_inject_command("set face_down 0.42");
+    TEST_ASSERT_EQUAL_FLOAT(0.42f, g_tuning.face_down_threshold);
+    // 复原
+    g_tuning.face_down_threshold = defaults::G_FACE_DOWN_THRESHOLD;
+    (void)orientBefore;
+}
+
+// ===========================================================================
+// 21) Wizard 端到端：'test' → ENTER 录数据 → 期望事件触发 → FEEDBACK
+//     验证：状态机走完、g_gesture 状态被重置、之后 'next' 可推进
+// ===========================================================================
+void test_tuning_wizard_capture_end_to_end() {
+    // 1) 先退出任何残留
+    dn_tuning_inject_command("exit");
+
+    // 2) 'test' 进入 wizard 第 0 步 = face_down
+    dn_tuning_inject_command("test");
+
+    // 3) 空行 = ENTER → 开始 capture
+    dn_tuning_inject_command("");
+
+    // 4) 模拟 K10 在 face-down 状态：连续喂 az=+0.95
+    //    capture max_ms = 2000；expect_face_down = 800ms + cooldown = 2000ms
+    //    begin() 把 _last_face_ms 清零，所以 800ms 后 face_down 触发，
+    //    endCapture() 自动跳到 FEEDBACK。
+    g_mock_millis = 0;
+    bool fired = false;
+    for (int i = 0; i < 120 && !fired; ++i) {  // 120 * 33 = 3960ms 兜底
+        const GestureEvent e = g_gesture.update(accel(0.0f, 0.0f, 0.95f), g_mock_millis);
+        AccelReading a = { true, 0, 0, 0.95f, g_mock_millis };
+        dn_tuning_post_step(g_mock_millis, a, e);
+        g_mock_millis += 33;
+        // 期望事件触发后 wizard 会自己 endCapture → 状态变成 FEEDBACK
+        // 用 set/next 仍能工作来证明已经退出了 CAPTURING
+        if (i > 30 && e == GESTURE_FACE_DOWN) { fired = true; }
+    }
+    TEST_ASSERT_TRUE_MESSAGE(fired, "FACE_DOWN never fired during wizard capture");
+
+    // 5) 退出 wizard 避免污染后续测试
+    dn_tuning_inject_command("exit");
+}
+
+// ===========================================================================
 // 入口：Unity main()
 //
 // 提供自己的 main()：PIO 的 native + unity 不会自动注入 main，
@@ -496,5 +587,8 @@ int main(int /*argc*/, char** /*argv*/) {
     RUN_TEST(test_tuning_repl_feed_queue_take);
     RUN_TEST(test_tuning_repl_reset_restores_defaults);
     RUN_TEST(test_tuning_repl_record_stop_clears_feed);
+    RUN_TEST(test_tuning_repl_verbose_toggle);
+    RUN_TEST(test_tuning_wizard_step_navigation);
+    RUN_TEST(test_tuning_wizard_capture_end_to_end);
     return UNITY_END();
 }

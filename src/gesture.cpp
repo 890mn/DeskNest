@@ -36,11 +36,31 @@ GestureTuning g_tuning = {
     .tap_z_high          = 1.2f,
     .tap_z_low           = 1.1f,
     .tap_cooldown_ms     = 300,
+
+    // 输出
+    .verbose             = 0,             // 默认安静
 };
 
 void GestureEngine::begin() {
     _orient.reset(ORIENTATION_PORTRAIT);  // 初始假设竖屏
     _pending = GESTURE_NONE;
+
+    // 冷却 + 跨帧计时器一并清零 —— 校准 wizard 每次 ENTER 重录时调用
+    _last_rotate_ms = 0;
+    _last_face_ms   = 0;
+    _last_shake_ms  = 0;
+    _last_tap_ms    = 0;
+    _peak_abs_accel = 0;
+    _peak_window_start_ms = 0;
+    _face_down_since_ms   = 0;
+    _face_up_since_ms     = 0;
+    _tap_prev_gz          = 1.0f;
+
+    // 滑动窗也清空，避免上一步的残值污染本步
+    _wx.reset();
+    _wy.reset();
+    _wz.reset();
+
     Serial.println("[D][GESTURE] engine ready");
 }
 
@@ -81,9 +101,8 @@ bool GestureEngine::detectShake_(float a_mag, uint32_t now_ms) {
 
 bool GestureEngine::detectTap_(const AccelReading& acc, uint32_t now_ms) {
     // 简化：gz 在短时间内 spike > tap_z_high 算 tap（prev < tap_z_low）
-    static float prev_gz = 1.0f;
-    bool tap = (acc.z > g_tuning.tap_z_high && prev_gz < g_tuning.tap_z_low);
-    prev_gz = acc.z;
+    bool tap = (acc.z > g_tuning.tap_z_high && _tap_prev_gz < g_tuning.tap_z_low);
+    _tap_prev_gz = acc.z;
     if (tap && (now_ms - _last_tap_ms) >= g_tuning.tap_cooldown_ms) {
         _last_tap_ms = now_ms;
         return true;
@@ -107,33 +126,31 @@ GestureEvent GestureEngine::update(const AccelReading& acc, uint32_t now_ms) {
     // 2) 翻面检测（az > face_down_threshold 持续 face_down_stable_ms）
     if (az > g_tuning.face_down_threshold) {
         // 累计时间
-        static uint32_t face_down_since_ms = 0;
-        if (face_down_since_ms == 0) {
-            face_down_since_ms = now_ms;
+        if (_face_down_since_ms == 0) {
+            _face_down_since_ms = now_ms;
         }
-        if ((now_ms - face_down_since_ms) >= g_tuning.face_down_stable_ms) {
+        if ((now_ms - _face_down_since_ms) >= g_tuning.face_down_stable_ms) {
             if (now_ms - _last_face_ms >= g_tuning.face_cooldown_ms) {
                 _last_face_ms = now_ms;
-                face_down_since_ms = 0;
+                _face_down_since_ms = 0;
                 return GESTURE_FACE_DOWN;
             }
         }
     } else if (az < g_tuning.face_up_threshold) {
         // 翻回
-        static uint32_t face_up_since_ms = 0;
-        if (face_up_since_ms == 0) {
-            face_up_since_ms = now_ms;
+        if (_face_up_since_ms == 0) {
+            _face_up_since_ms = now_ms;
         }
-        if ((now_ms - face_up_since_ms) >= g_tuning.face_up_stable_ms) {
+        if ((now_ms - _face_up_since_ms) >= g_tuning.face_up_stable_ms) {
             if (now_ms - _last_face_ms >= g_tuning.face_cooldown_ms) {
                 _last_face_ms = now_ms;
-                face_up_since_ms = 0;
+                _face_up_since_ms = 0;
                 return GESTURE_FACE_UP_OPEN;
             }
         }
     } else {
         // 中性区：不重置 face_down/face_up 计时器 —— 它们各自的 if 分支
-        // 会在 fire 时清零（line ~89、~103）。这里留空。
+        // 会在 fire 时清零。这里留空。
     }
 
     // 3) 旋转检测（X/Y 主轴，滞回 rotate_stable_ms）

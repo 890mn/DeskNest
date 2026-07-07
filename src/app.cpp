@@ -197,8 +197,9 @@ void dn_app_loop() {
     // 5) UI 渲染（按页面变化或 1Hz 节流，内部做）
     dn_ui_render();
 
-    // 6) 心跳 + 传感器 + 状态
-    if (now - g_last_heartbeat_ms >= HEARTBEAT_INTERVAL_MS) {
+    // 6) 心跳 + 传感器 + 状态 —— 默认安静（g_tuning.verbose = 0），
+    //    调参时终端不被打扰。串口 REPL 'verbose 1' 开
+    if (g_tuning.verbose && (now - g_last_heartbeat_ms >= HEARTBEAT_INTERVAL_MS)) {
         g_last_heartbeat_ms = now;
         print_heartbeat(g_state.snapshot());
         print_sensors();
