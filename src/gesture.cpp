@@ -11,6 +11,33 @@ namespace desknest {
 
 GestureEngine g_gesture;
 
+// ---------------------------------------------------------------------------
+// 运行时可调阈值 —— 初始值 = config.h::defaults；
+// 几个原来散落在 gesture.cpp 各处的硬编码（1000/2000/300/200/1.2/1.1）
+// 也都搬到这里，由 src/gesture_tuning.cpp 的串口 REPL 改。
+// ---------------------------------------------------------------------------
+GestureTuning g_tuning = {
+    // 翻面
+    .face_down_threshold = defaults::G_FACE_DOWN_THRESHOLD,   // +0.7
+    .face_up_threshold   = defaults::G_FACE_UP_THRESHOLD,     // -0.7
+    .face_down_stable_ms = defaults::T_FACE_DOWN_STABLE_MS,   // 800
+    .face_up_stable_ms   = defaults::T_FACE_UP_STABLE_MS,     // 300
+    .face_cooldown_ms    = 2000,
+    // 旋转
+    .rotate_threshold    = defaults::G_ROTATE_THRESHOLD,      // 0.7
+    .rotate_amb          = 0.4f,                              // 0.3 = 0.7 - 0.4
+    .rotate_stable_ms    = defaults::T_ROTATE_STABLE_MS,      // 400
+    .rotate_cooldown_ms  = 1000,
+    // 摇动
+    .shake_threshold     = defaults::G_SHAKE_THRESHOLD,       // 1.5
+    .shake_window_ms     = 200,
+    .shake_cooldown_ms   = defaults::T_SHAKE_COOLDOWN_MS,    // 600
+    // Tap
+    .tap_z_high          = 1.2f,
+    .tap_z_low           = 1.1f,
+    .tap_cooldown_ms     = 300,
+};
+
 void GestureEngine::begin() {
     _orient.reset(ORIENTATION_PORTRAIT);  // 初始假设竖屏
     _pending = GESTURE_NONE;
@@ -19,10 +46,10 @@ void GestureEngine::begin() {
 
 OrientationState GestureEngine::classifyOrientation_(float ax, float ay) const {
     // 参考 plan §4.2：
-    //   |ax|>0.7g ∧ |ay|<0.3g → LANDSCAPE
-    //   |ay|>0.7g ∧ |ax|<0.3g → PORTRAIT
-    const float G_R   = defaults::G_ROTATE_THRESHOLD;   // 0.7
-    const float G_AMB = G_R - 0.4f;                     // 0.3 滞回
+    //   |ax|>rotate_threshold ∧ |ay|<rotate_threshold-rotate_amb → LANDSCAPE
+    //   |ay|>rotate_threshold ∧ |ax|<rotate_threshold-rotate_amb → PORTRAIT
+    const float G_R   = g_tuning.rotate_threshold;
+    const float G_AMB = G_R - g_tuning.rotate_amb;
 
     if (fabsf(ax) > G_R && fabsf(ay) < G_AMB) {
         return (ax > 0) ? ORIENTATION_LANDSCAPE : ORIENTATION_LANDSCAPE;  // 暂不区分 left/right
@@ -34,16 +61,16 @@ OrientationState GestureEngine::classifyOrientation_(float ax, float ay) const {
 }
 
 bool GestureEngine::detectShake_(float a_mag, uint32_t now_ms) {
-    // 200ms 窗口内 |a| > 1.5g 触发
-    if (now_ms - _peak_window_start_ms > 200) {
+    // shake_window_ms 窗口内 |a| > shake_threshold 触发
+    if (now_ms - _peak_window_start_ms > g_tuning.shake_window_ms) {
         _peak_abs_accel = 0;
         _peak_window_start_ms = now_ms;
     }
     if (a_mag > _peak_abs_accel) {
         _peak_abs_accel = a_mag;
     }
-    if (_peak_abs_accel > defaults::G_SHAKE_THRESHOLD) {
-        if (now_ms - _last_shake_ms >= defaults::T_SHAKE_COOLDOWN_MS) {
+    if (_peak_abs_accel > g_tuning.shake_threshold) {
+        if (now_ms - _last_shake_ms >= g_tuning.shake_cooldown_ms) {
             _last_shake_ms = now_ms;
             _peak_abs_accel = 0;
             return true;
@@ -53,11 +80,11 @@ bool GestureEngine::detectShake_(float a_mag, uint32_t now_ms) {
 }
 
 bool GestureEngine::detectTap_(const AccelReading& acc, uint32_t now_ms) {
-    // 简化：gz 在短时间内 spike > 1.2g 算 tap
+    // 简化：gz 在短时间内 spike > tap_z_high 算 tap（prev < tap_z_low）
     static float prev_gz = 1.0f;
-    bool tap = (acc.z > 1.2f && prev_gz < 1.1f);
+    bool tap = (acc.z > g_tuning.tap_z_high && prev_gz < g_tuning.tap_z_low);
     prev_gz = acc.z;
-    if (tap && (now_ms - _last_tap_ms) >= 300) {
+    if (tap && (now_ms - _last_tap_ms) >= g_tuning.tap_cooldown_ms) {
         _last_tap_ms = now_ms;
         return true;
     }
@@ -77,28 +104,28 @@ GestureEvent GestureEngine::update(const AccelReading& acc, uint32_t now_ms) {
     const float az = _wz.avg();
     const float a_mag = sqrtf(ax*ax + ay*ay + az*az);
 
-    // 2) 翻面检测（Z > +0.7g 持续 800ms = 屏幕朝下/翻面栖息）
-    if (az > defaults::G_FACE_DOWN_THRESHOLD) {
+    // 2) 翻面检测（az > face_down_threshold 持续 face_down_stable_ms）
+    if (az > g_tuning.face_down_threshold) {
         // 累计时间
         static uint32_t face_down_since_ms = 0;
         if (face_down_since_ms == 0) {
             face_down_since_ms = now_ms;
         }
-        if ((now_ms - face_down_since_ms) >= defaults::T_FACE_DOWN_STABLE_MS) {
-            if (now_ms - _last_face_ms >= 2000) {
+        if ((now_ms - face_down_since_ms) >= g_tuning.face_down_stable_ms) {
+            if (now_ms - _last_face_ms >= g_tuning.face_cooldown_ms) {
                 _last_face_ms = now_ms;
                 face_down_since_ms = 0;
                 return GESTURE_FACE_DOWN;
             }
         }
-    } else if (az < defaults::G_FACE_UP_THRESHOLD) {
+    } else if (az < g_tuning.face_up_threshold) {
         // 翻回
         static uint32_t face_up_since_ms = 0;
         if (face_up_since_ms == 0) {
             face_up_since_ms = now_ms;
         }
-        if ((now_ms - face_up_since_ms) >= defaults::T_FACE_UP_STABLE_MS) {
-            if (now_ms - _last_face_ms >= 2000) {
+        if ((now_ms - face_up_since_ms) >= g_tuning.face_up_stable_ms) {
+            if (now_ms - _last_face_ms >= g_tuning.face_cooldown_ms) {
                 _last_face_ms = now_ms;
                 face_up_since_ms = 0;
                 return GESTURE_FACE_UP_OPEN;
@@ -109,13 +136,13 @@ GestureEvent GestureEngine::update(const AccelReading& acc, uint32_t now_ms) {
         // 会在 fire 时清零（line ~89、~103）。这里留空。
     }
 
-    // 3) 旋转检测（X/Y 主轴，滞回 400ms）
+    // 3) 旋转检测（X/Y 主轴，滞回 rotate_stable_ms）
     const OrientationState new_orient = classifyOrientation_(ax, ay);
     const OrientationState old_orient = _orient.value();
 
     if (new_orient != old_orient) {
-        _orient.update(new_orient, now_ms, defaults::T_ROTATE_STABLE_MS);
-        if (_orient.changed() && (now_ms - _last_rotate_ms) >= 1000) {
+        _orient.update(new_orient, now_ms, g_tuning.rotate_stable_ms);
+        if (_orient.changed() && (now_ms - _last_rotate_ms) >= g_tuning.rotate_cooldown_ms) {
             _last_rotate_ms = now_ms;
             if (new_orient == ORIENTATION_LANDSCAPE) {
                 return GESTURE_ROTATE_PORTRAIT_TO_LANDSCAPE;
@@ -124,7 +151,7 @@ GestureEvent GestureEngine::update(const AccelReading& acc, uint32_t now_ms) {
             }
         }
     } else {
-        _orient.update(new_orient, now_ms, defaults::T_ROTATE_STABLE_MS);
+        _orient.update(new_orient, now_ms, g_tuning.rotate_stable_ms);
     }
 
     // 4) 摇动检测

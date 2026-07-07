@@ -88,6 +88,39 @@ private:
 };
 
 // ============================================================================
+// 运行时可调阈值（被 src/gesture_tuning.cpp 的串口 REPL 修改）
+// 默认值来自 config.h::defaults；TAP/COOLDOWN 几个原来是硬编码的也提到这里。
+// ============================================================================
+
+struct GestureTuning {
+    // 翻面
+    float    face_down_threshold;     // az >  此值算"面朝下"
+    float    face_up_threshold;       // az <  此值算"面朝上"
+    uint16_t face_down_stable_ms;     // 持续时间（默认 800ms）
+    uint16_t face_up_stable_ms;       // 持续时间（默认 300ms）
+    uint16_t face_cooldown_ms;        // 两次翻面事件最小间隔（默认 2000ms）
+
+    // 旋转
+    float    rotate_threshold;        // 主轴 > 此值 ∧ 副轴 < rotate_threshold - rotate_amb
+    float    rotate_amb;              // 副轴滞回宽度（默认 0.4g）
+    uint16_t rotate_stable_ms;        // Hysteresis commit 窗口（默认 400ms）
+    uint16_t rotate_cooldown_ms;      // 两次旋转事件最小间隔（默认 1000ms）
+
+    // 摇动
+    float    shake_threshold;         // 200ms 窗口内 |a| 峰值 > 此值（默认 1.5g）
+    uint16_t shake_window_ms;         // 摇动峰值跟踪窗口（默认 200ms）
+    uint16_t shake_cooldown_ms;       // 两次摇动最小间隔（默认 600ms）
+
+    // Tap
+    float    tap_z_high;              // 当前 az > 此值（默认 1.2g）
+    float    tap_z_low;               // 上一拍 az < 此值（默认 1.1g）
+    uint16_t tap_cooldown_ms;         // 两次 tap 最小间隔（默认 300ms）
+};
+
+// 全局实例：默认值在 gesture.cpp 里填。REPL 的 'set' / 'reset' 改这个。
+extern GestureTuning g_tuning;
+
+// ============================================================================
 // GestureEngine —— 把加速度原始数据转 GestureEvent
 // ============================================================================
 

@@ -57,6 +57,8 @@ public:
 class SerialClass : public Print {
 public:
     void begin(unsigned long = 0) {}
+    int  available() { return 0; }   // test stub: 没数据，避免阻塞
+    int  read()      { return -1; }
 };
 
 extern SerialClass Serial;

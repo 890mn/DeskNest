@@ -19,8 +19,14 @@
 // 把 Arduino.h 桩和 gesture.cpp 拉进来。注意：必须放在 Unity <unity.h> 之后，
 // 否则 gesture.cpp 的 #include <Arduino.h> 会先吃掉 framework-arduino* 的版本。
 #include "../../src/gesture.cpp"
+#include "../../src/gesture_tuning.cpp"
 
 using namespace desknest;
+
+// sensors.h 里 extern 了 g_sensors；gesture_tuning.cpp 里的 recording 流会
+// 引用它（虽然测试不会进入 recording 路径），链接器需要一份定义。
+// 默认构造足够，方法不会被调用。
+Sensors g_sensors;
 
 // ---------------------------------------------------------------------------
 // 时钟 / 工具
@@ -325,6 +331,144 @@ void test_gesture_invalid_sample_returns_none() {
 }
 
 // ===========================================================================
+// 13) g_tuning 运行时改阈值后立即生效
+//     把 face_down 阈值从 0.7 放宽到 0.5：az=0.55（默认下不到）
+//     现在应该能触发 FACE_DOWN。
+// ===========================================================================
+void test_tuning_face_down_threshold_runtime_change() {
+    GestureEngine g;
+    g.begin();
+    feedSettle(g, 0.0f, 1.0f, 0.0f);
+
+    // 默认下：az=0.55 触发不了
+    g_tuning.face_down_threshold = 0.6f;
+    bool gotDefault = false;
+    for (int i = 0; i < 60; ++i) {
+        if (g.update(accel(0.0f, 0.0f, 0.55f), g_mock_millis)
+            == GESTURE_FACE_DOWN) { gotDefault = true; break; }
+        g_mock_millis += 33;
+    }
+    TEST_ASSERT_FALSE_MESSAGE(gotDefault, "FACE_DOWN fired with relaxed threshold — expected miss");
+
+    // 放宽到 0.5：现在 az=0.55 应该触发
+    g_tuning.face_down_threshold = 0.5f;
+    bool gotRelaxed = false;
+    for (int i = 0; i < 60; ++i) {
+        if (g.update(accel(0.0f, 0.0f, 0.55f), g_mock_millis)
+            == GESTURE_FACE_DOWN) { gotRelaxed = true; break; }
+        g_mock_millis += 33;
+    }
+    TEST_ASSERT_TRUE_MESSAGE(gotRelaxed, "FACE_DOWN not fired after lowering threshold to 0.5");
+
+    // 恢复默认，避免污染其他测试
+    g_tuning.face_down_threshold = defaults::G_FACE_DOWN_THRESHOLD;
+}
+
+// ===========================================================================
+// 14) g_tuning.rotate_stable_ms 改大后旋转要等更久才 commit
+// ===========================================================================
+void test_tuning_rotate_stable_ms_runtime_change() {
+    GestureEngine g;
+    g.begin();
+    feedSettle(g, 0.0f, 1.0f, 0.0f);
+
+    // 放宽到 1500ms：400ms 之前肯定不 commit
+    g_tuning.rotate_stable_ms = 1500;
+    bool rotatedEarly = false;
+    for (int i = 0; i < 12; ++i) {  // 12*33 = 396ms < 400ms < 1500ms
+        if (g.update(accel(0.9f, 0.1f, 0.0f), g_mock_millis)
+            == GESTURE_ROTATE_PORTRAIT_TO_LANDSCAPE) { rotatedEarly = true; break; }
+        g_mock_millis += 33;
+    }
+    TEST_ASSERT_FALSE_MESSAGE(rotatedEarly, "ROTATE fired before rotate_stable_ms=1500 elapsed");
+
+    // 再走 1500ms：等 commit
+    bool rotatedLate = false;
+    for (int i = 0; i < 60; ++i) {
+        if (g.update(accel(0.9f, 0.1f, 0.0f), g_mock_millis)
+            == GESTURE_ROTATE_PORTRAIT_TO_LANDSCAPE) { rotatedLate = true; break; }
+        g_mock_millis += 33;
+    }
+    TEST_ASSERT_TRUE_MESSAGE(rotatedLate, "ROTATE never fired even with rotate_stable_ms=1500");
+
+    g_tuning.rotate_stable_ms = defaults::T_ROTATE_STABLE_MS;
+}
+
+// ===========================================================================
+// 15) REPL: 'set face_down 0.85' 直接改 g_tuning.face_down_threshold
+// ===========================================================================
+void test_tuning_repl_set_modifies_field() {
+    g_tuning.face_down_threshold = 0.7f;  // 先确认一个已知起点
+    dn_tuning_inject_command("set face_down 0.85");
+    TEST_ASSERT_EQUAL_FLOAT(0.85f, g_tuning.face_down_threshold);
+
+    dn_tuning_inject_command("set face_cd 500");
+    TEST_ASSERT_EQUAL_UINT16(500, g_tuning.face_cooldown_ms);
+
+    // 名字错：不报错也不改值
+    const float before = g_tuning.face_down_threshold;
+    dn_tuning_inject_command("set bogus_name 1.23");
+    TEST_ASSERT_EQUAL_FLOAT(before, g_tuning.face_down_threshold);
+}
+
+// ===========================================================================
+// 16) REPL: 'feed x y z' 排队一次 accel；dn_tuning_take_feed 消费一次后
+//     第二次返回 false
+// ===========================================================================
+void test_tuning_repl_feed_queue_take() {
+    // 清掉之前测试可能残留的 pending
+    AccelReading dummy;
+    while (dn_tuning_take_feed(dummy)) { /* drain */ }
+
+    dn_tuning_inject_command("feed 0.0 0.9 0.1");
+    AccelReading got = { false, 0, 0, 0, 0 };
+    TEST_ASSERT_TRUE_MESSAGE(dn_tuning_take_feed(got), "take_feed returned false after 'feed'");
+    TEST_ASSERT_TRUE(got.valid);
+    TEST_ASSERT_EQUAL_FLOAT(0.0f, got.x);
+    TEST_ASSERT_EQUAL_FLOAT(0.9f, got.y);
+    TEST_ASSERT_EQUAL_FLOAT(0.1f, got.z);
+
+    // 第二次取：应当空了
+    AccelReading got2 = { false, 0, 0, 0, 0 };
+    TEST_ASSERT_FALSE_MESSAGE(dn_tuning_take_feed(got2), "take_feed should be one-shot");
+}
+
+// ===========================================================================
+// 17) REPL: 'reset' 把 g_tuning 恢复成 defaults
+// ===========================================================================
+void test_tuning_repl_reset_restores_defaults() {
+    g_tuning.face_down_threshold = 0.42f;
+    g_tuning.rotate_stable_ms    = 9999;
+    g_tuning.shake_threshold     = 0.10f;
+
+    dn_tuning_inject_command("reset");
+
+    TEST_ASSERT_EQUAL_FLOAT(defaults::G_FACE_DOWN_THRESHOLD, g_tuning.face_down_threshold);
+    TEST_ASSERT_EQUAL_UINT16(defaults::T_ROTATE_STABLE_MS, g_tuning.rotate_stable_ms);
+    TEST_ASSERT_EQUAL_FLOAT(defaults::G_SHAKE_THRESHOLD, g_tuning.shake_threshold);
+}
+
+// ===========================================================================
+// 18) REPL: 'record' / 'stop' 切换 g_recording 状态
+//     （g_recording 是文件内 static，无法直接读到；用间接法：
+//      'stop' 还会清掉 pending feed，所以拿 feed + take 验证 stop 的副作用）
+// ===========================================================================
+void test_tuning_repl_record_stop_clears_feed() {
+    // 排一个 feed
+    AccelReading drain;
+    while (dn_tuning_take_feed(drain)) {}
+    dn_tuning_inject_command("feed 0.1 0.2 0.3");
+    AccelReading pre = { false, 0, 0, 0, 0 };
+    TEST_ASSERT_TRUE(dn_tuning_take_feed(pre));   // 消费掉
+
+    // 'stop' 应当清掉 pending feed（即使没有）
+    dn_tuning_inject_command("feed 0.4 0.5 0.6");
+    dn_tuning_inject_command("stop");
+    AccelReading post = { false, 0, 0, 0, 0 };
+    TEST_ASSERT_FALSE_MESSAGE(dn_tuning_take_feed(post), "'stop' should clear pending feed");
+}
+
+// ===========================================================================
 // 入口：Unity main()
 //
 // 提供自己的 main()：PIO 的 native + unity 不会自动注入 main，
@@ -346,5 +490,11 @@ int main(int /*argc*/, char** /*argv*/) {
     RUN_TEST(test_gesture_orientation_holds_in_dead_zone);
     RUN_TEST(test_gesture_tap_on_z_spike);
     RUN_TEST(test_gesture_invalid_sample_returns_none);
+    RUN_TEST(test_tuning_face_down_threshold_runtime_change);
+    RUN_TEST(test_tuning_rotate_stable_ms_runtime_change);
+    RUN_TEST(test_tuning_repl_set_modifies_field);
+    RUN_TEST(test_tuning_repl_feed_queue_take);
+    RUN_TEST(test_tuning_repl_reset_restores_defaults);
+    RUN_TEST(test_tuning_repl_record_stop_clears_feed);
     return UNITY_END();
 }

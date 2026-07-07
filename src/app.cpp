@@ -10,6 +10,7 @@
 #include "config.h"
 #include "sensors.h"
 #include "gesture.h"
+#include "gesture_tuning.h"
 #include "state_machine.h"
 #include "ui.h"
 
@@ -152,6 +153,9 @@ void dn_app_setup() {
     Serial.println("[D][BOOT] P0-D: initializing UI...");
     dn_ui_setup();
 
+    Serial.println("[D][BOOT] P0-E: initializing gesture tuning REPL...");
+    desknest::dn_tuning_setup();
+
     Serial.println("[D][BOOT] done. entering main loop.");
 
     desknest::g_last_heartbeat_ms = millis();
@@ -163,11 +167,15 @@ void dn_app_loop() {
 
     // 1) 传感器
     g_sensors.update();
-    const AccelReading acc = g_sensors.accel();
+    AccelReading acc = g_sensors.accel();
 
-    // 2) 手势
+    // 2) 手势（tuning REPL 可能用 pending feed 覆盖真实 accel 一帧）
     const uint32_t now = millis();
+    dn_tuning_take_feed(acc);   // 若有 pending feed 替换 acc；无则保留原值
     const GestureEvent g = g_gesture.update(acc, now);
+
+    // 2.5) tuning 后处理：吃串口、recording 日志
+    dn_tuning_post_step(now, acc, g);
 
     // 3) 按键（P0-C 阶段先用 mock 触发器：每 10s 模拟 BUTTON_NEXT 一次方便看状态转移）
     static uint32_t last_mock_btn_ms = 0;
