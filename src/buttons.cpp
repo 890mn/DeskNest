@@ -24,32 +24,42 @@ Tracker g_a;
 Tracker g_b;
 Tracker g_ab;
 
-// 长按阈值
-constexpr uint32_t SHORT_PRESS_MAX_MS = 1000;  // 短按上限
-constexpr uint32_t LONG_PRESS_MS     = 1000;  // 单键长按
-constexpr uint32_t AB_LONG_PRESS_MS  = 3000;  // A+B 长按 = factory reset
+// 长按阈值（短按不需要阈值：按下→释放，期间未触发 long 即为短按）
+constexpr uint32_t LONG_PRESS_MS     = 1000;   // 单键长按
+constexpr uint32_t AB_LONG_PRESS_MS  = 3000;   // A+B 长按 = factory reset
 
 // 跟踪单个按键：本帧是否有事件 + 更新内部状态
 //   返回事件（若有），状态在函数内部已更新
+//
+// 关键 bug 修复：必须先更新 press_start_ms，再算 held_ms。
+// 否则第一帧按下时 held_ms = now_ms - 0 = now_ms（巨大），长按立刻误触发。
 ButtonEvent tick_one(Tracker& t, bool now_pressed, uint32_t now_ms,
                      uint32_t long_ms,
                      ButtonEvent short_event, ButtonEvent long_event) {
     ButtonEvent e = BUTTON_NONE;
     const bool edge_down = now_pressed && !t.prev_pressed;
     const bool edge_up   = !now_pressed && t.prev_pressed;
-    const uint32_t held_ms = now_pressed ? (now_ms - t.press_start_ms) : 0;
 
+    // 1) 先处理 edge_down —— 把 press_start_ms 设到 now
     if (edge_down) {
         t.press_start_ms = now_ms;
         t.long_fired = false;
     }
-    if (edge_up && !t.long_fired && held_ms < SHORT_PRESS_MAX_MS) {
-        e = short_event;  // 短按释放
+
+    // 2) 再算 held_ms（此时 press_start_ms 已是新的）
+    const uint32_t held_ms = now_pressed ? (now_ms - t.press_start_ms) : 0;
+
+    // 3) edge_up 时若 long 没 fire 过 → 短按
+    if (edge_up && !t.long_fired) {
+        e = short_event;
     }
+
+    // 4) 按住超过 long_ms（一次性）
     if (now_pressed && !t.long_fired && held_ms >= long_ms) {
         t.long_fired = true;
-        e = long_event;  // 长按
+        e = long_event;
     }
+
     t.prev_pressed = now_pressed;
     return e;
 }
