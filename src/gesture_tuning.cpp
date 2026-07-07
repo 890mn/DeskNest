@@ -15,8 +15,9 @@ namespace desknest {
 // ---------------------------------------------------------------------------
 
 // 行缓冲（用户敲到 '\n' 才解析）
-static constexpr uint8_t LINE_MAX = 96;
-static char     g_line[LINE_MAX];
+// 不用 LINE_MAX —— 会被 xtensa 工具链 <limits.h> 里的同名宏撞掉
+static constexpr uint8_t TUNING_LINE_MAX = 96;
+static char     g_line[TUNING_LINE_MAX];
 static uint8_t  g_line_len = 0;
 
 // 注入 accel 队列（最近一次 feed 替换真实 accel 一帧）
@@ -287,7 +288,7 @@ void dn_tuning_post_step(uint32_t now_ms, const AccelReading& acc, GestureEvent 
     while (Serial.available() > 0) {
         char c = (char)Serial.read();
         if (c == '\r') continue;
-        if (c == '\n' || g_line_len >= LINE_MAX - 1) {
+        if (c == '\n' || g_line_len >= TUNING_LINE_MAX - 1) {
             g_line[g_line_len] = '\0';
             processLine(g_line);
             g_line_len = 0;
@@ -314,7 +315,7 @@ void dn_tuning_post_step(uint32_t now_ms, const AccelReading& acc, GestureEvent 
 // ---------------------------------------------------------------------------
 void dn_tuning_inject_command(const char* line) {
     if (!line) return;
-    char buf[LINE_MAX];
+    char buf[TUNING_LINE_MAX];
     size_t n = strlen(line);
     if (n >= sizeof(buf)) n = sizeof(buf) - 1;
     memcpy(buf, line, n);
