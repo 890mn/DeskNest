@@ -30,26 +30,31 @@ namespace desknest {
 #endif
 
 // ============================================================================
-// 硬件引脚集中表（已与 variants/unihiker_k10/pins_arduino.h 与
-// framework-arduinounihiker/libraries/unihiker_k10/src/unihiker_k10.h 核对）
-// 业务代码建议直接用 unihiker_k10 高层 API（k10.begin / readALS / buttonA /
-// rgb 等），这里的常量只用于 analogRead 等无法走 BSP 的场景。
+// 硬件引脚集中表
 // ============================================================================
+//
+// 设计原则：**以 K10 BSP 高层 API 为唯一来源**，业务代码不直接操作 GPIO。
+// - 按钮 / RGB / 屏幕 / 传感器 全部走 k10.xxx
+// - 真要直接 GPIO（analogRead 等）才用本表
+// - 旧版 pins::BUTTON_A / BUTTON_B 已废弃（BSP 的 buttonA/buttonB/buttonAB
+//   自动管引脚，不需要业务层再持有一份）
 
 namespace pins {
-    // I2C 总线（AHT20 + LTR303 + SC7A20H 共用）
-    constexpr uint8_t I2C_SDA       = 47;   // pins_arduino.h: SDA
-    constexpr uint8_t I2C_SCL       = 48;   // pins_arduino.h: SCL
+    // I2C 总线（AHT20 + LTR303 + SC7A20H 共用）—— 由 K10 BSP 管
+    // constexpr uint8_t I2C_SDA = 47;   // 仅留注释，BSP 内已定义
+    // constexpr uint8_t I2C_SCL = 48;
 
-    // 3 颗 WS2812（RGB）
-    constexpr uint8_t WS2812_DIN    = 46;   // unihiker_k10.h: PIXEL_PIN
+    // 3 颗 WS2812（RGB）—— BSP 用 k10.rgb->write()，引脚自动
+    // constexpr uint8_t WS2812_DIN = 46;
 
-    // 板载按键（A = 短按；B = 短按；A+B = 组合）
-    constexpr uint8_t BUTTON_A      = 12;   // P5 / eP5_KeyA
-    constexpr uint8_t BUTTON_B      = 2;    // P11 / eP11_KeyB
+    // 板载按键 —— **走 k10.buttonA / buttonB / buttonAB 的 isPressed()**
+    //   A:   P5  = eP5_KeyA   (BSP 内部)
+    //   B:   P11 = eP11_KeyB  (BSP 内部)
+    //   A+B: k10.buttonAB 同时检测两端
+    // 不再持有 BUTTON_A / BUTTON_B 常量——单源真相在 BSP
 
-    // 外接电池 ADC（K10 出厂无内置电池，此项为扩展预留）
-    constexpr uint8_t BATTERY_ADC   = 5;    // A4 — 待原理图复核
+    // 外接电池 ADC（K10 出厂无内置电池，此项为扩展预留，待原理图复核）
+    constexpr uint8_t BATTERY_ADC   = 5;    // A4
 
     // 屏幕背光：K10 BSP 用 eLCD_BLK 自行管理，不要直接操作
     constexpr uint8_t TFT_BL_PWM    = 0;    // 占位：实际背光走 k10.initScreen()

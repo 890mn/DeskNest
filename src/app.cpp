@@ -13,6 +13,7 @@
 #include "gesture_tuning.h"
 #include "state_machine.h"
 #include "ui.h"
+#include "buttons.h"
 
 #include <Arduino.h>
 
@@ -175,17 +176,11 @@ void dn_app_loop() {
     // 2.5) tuning 后处理：吃串口、recording 日志
     dn_tuning_post_step(now, acc, g);
 
-    // 3) 按键（P0-C 阶段先用 mock 触发器：每 10s 模拟 BUTTON_NEXT 一次方便看状态转移）
-    static uint32_t last_mock_btn_ms = 0;
-    static uint8_t mock_btn_idx = 0;
-    ButtonEvent b = BUTTON_NONE;
-    if (now - last_mock_btn_ms >= 10000) {
-        last_mock_btn_ms = now;
-        // 模拟 5 种按键轮流
-        const ButtonEvent seq[] = {BUTTON_NEXT, BUTTON_NEXT, BUTTON_PREV, BUTTON_MENU, BUTTON_BACK};
-        b = seq[mock_btn_idx % 5];
-        mock_btn_idx++;
-        Serial.printf("[D][INPUT] mock button=%d\n", (int)b);
+    // 3) 按键 —— 走 K10 BSP 的 buttonA / buttonB / buttonAB
+    //    （BSP 在内部用 FreeRTOS 任务轮询 GPIO，引脚由 BSP 决定）
+    const ButtonEvent b = dn_button_poll(now);
+    if (b != BUTTON_NONE) {
+        Serial.printf("[D][INPUT] button=%d\n", (int)b);
     }
 
     // 4) 状态机
