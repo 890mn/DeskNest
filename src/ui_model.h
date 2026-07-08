@@ -14,6 +14,7 @@
 #include "page_registry.h"
 #include "environment_module.h"
 #include "ai_usage_module.h"
+#include "focus_module.h"
 
 #include <stdint.h>
 
@@ -159,17 +160,10 @@ struct UiLandscapeOverviewProps {
     const char* systemText = "";
 };
 
-enum UiFocusState : uint8_t {
-    UI_FOCUS_IDLE = 0,
-    UI_FOCUS_RUNNING,
-    UI_FOCUS_PAUSED,
-    UI_FOCUS_DONE,
-};
-
 struct UiFocusProps {
     const char* modeText = "";
     const char* timerText = "";
-    UiFocusState state = UI_FOCUS_IDLE;
+    FocusState state = FOCUS_IDLE;
     const char* stateText = "";
     const char* goalText = "";
     uint8_t aiTotalPercent = 0;
@@ -444,11 +438,12 @@ inline UiModel dn_build_ui_model_from_inputs(const UiModelInputs& in) {
     m.landscapeOverview.environmentValid = in.temperatureValid;
     m.landscapeOverview.systemText = m.status.systemText;
 
-    m.focus.modeText = "DEEP WORK";
-    m.focus.timerText = "25:00";
-    m.focus.state = UI_FOCUS_RUNNING;
-    m.focus.stateText = "> IN PROGRESS";
-    m.focus.goalText = "Goal · 50 min";
+    const FocusStatus focusStatus = dn_focus_default_status();
+    m.focus.modeText = focusStatus.modeText;
+    m.focus.timerText = focusStatus.timerText;
+    m.focus.state = focusStatus.state;
+    m.focus.stateText = focusStatus.stateText;
+    m.focus.goalText = focusStatus.goalText;
     m.focus.aiTotalPercent = m.aiUsage.totalPercent;
     m.focus.environmentText = m.environment.gradeText;
 
