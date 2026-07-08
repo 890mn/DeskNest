@@ -15,6 +15,7 @@
 #include "environment_module.h"
 #include "ai_usage_module.h"
 #include "focus_module.h"
+#include "settings_module.h"
 
 #include <stdint.h>
 
@@ -314,13 +315,11 @@ inline UiUsageItemProps dn_usage_item(const AIUsageItemStatus& src) {
     return item;
 }
 
-inline UiSettingsRowProps dn_settings_row(const char* label,
-                                          const char* value,
-                                          bool selectable) {
+inline UiSettingsRowProps dn_settings_row(const SettingsRowStatus& src) {
     UiSettingsRowProps row;
-    row.label = label;
-    row.value = value;
-    row.selectable = selectable;
+    row.label = src.label;
+    row.value = src.value;
+    row.selectable = src.selectable;
     return row;
 }
 
@@ -420,14 +419,13 @@ inline UiModel dn_build_ui_model_from_inputs(const UiModelInputs& in) {
     m.environment.lightGrade = envStatus.lightGrade;
     m.environment.adviceText = envStatus.adviceText;
 
-    m.settings.rowCount = 5;
-    m.settings.rows[0] = dn_settings_row("Power", "Balanced", true);
-    m.settings.rows[1] = dn_settings_row("Sync", "Battery", true);
-    m.settings.rows[2] = dn_settings_row("Density", "Normal", true);
-    m.settings.rows[3] = dn_settings_row("Rotate", "Auto", true);
-    m.settings.rows[4] = dn_settings_row("Theme", "Dark", true);
-    m.settings.selectedIndex = 0;
-    m.settings.dangerHint = "[A+B] Factory";
+    const SettingsStatus settingsStatus = dn_settings_default_status();
+    m.settings.rowCount = settingsStatus.rowCount;
+    for (uint8_t i = 0; i < settingsStatus.rowCount && i < 8; ++i) {
+        m.settings.rows[i] = dn_settings_row(settingsStatus.rows[i]);
+    }
+    m.settings.selectedIndex = settingsStatus.selectedIndex;
+    m.settings.dangerHint = settingsStatus.dangerHint;
 
     m.landscapeOverview.aiTotalPercent = m.aiUsage.totalPercent;
     m.landscapeOverview.minimaxText = "MiniMax OK";
