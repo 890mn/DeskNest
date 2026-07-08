@@ -12,6 +12,8 @@
 #include "state_machine.h"
 #include "gesture.h"
 #include "page_registry.h"
+#include "environment_module.h"
+#include "ai_usage_module.h"
 
 #include <stdint.h>
 
@@ -309,44 +311,12 @@ inline ShakeVisualPhase dn_shake_visual_phase(ShakePhase phase) {
     }
 }
 
-inline uint8_t dn_environment_score(const UiModelInputs& in) {
-    if (!in.temperatureValid) return 0;
-
-    uint8_t score = 0;
-    if (in.temperatureC >= 22 && in.temperatureC <= 26) score += 35;
-    else if (in.temperatureC >= 18 && in.temperatureC < 22) score += 25;
-    else if (in.temperatureC > 26 && in.temperatureC <= 30) score += 25;
-    else if (in.temperatureC < 18) score += 15;
-    else score += 10;
-
-    if (in.humidityPct >= 40 && in.humidityPct <= 60) score += 35;
-    else if (in.humidityPct >= 30 && in.humidityPct < 40) score += 25;
-    else if (in.humidityPct > 60 && in.humidityPct <= 70) score += 25;
-    else score += 15;
-
-    if (in.lux >= 200 && in.lux <= 600) score += 30;
-    else if (in.lux >= 100 && in.lux < 200) score += 22;
-    else if (in.lux > 600 && in.lux <= 800) score += 22;
-    else score += 12;
-
-    return score;
-}
-
-inline const char* dn_environment_grade(uint8_t score) {
-    if (score >= 80) return "良好";
-    if (score >= 60) return "一般";
-    return "欠佳";
-}
-
-inline UiUsageItemProps dn_usage_item(const char* name,
-                                      uint8_t percent,
-                                      const char* statusText,
-                                      const char* detailText) {
+inline UiUsageItemProps dn_usage_item(const AIUsageItemStatus& src) {
     UiUsageItemProps item;
-    item.name = name;
-    item.percent = percent;
-    item.statusText = statusText;
-    item.detailText = detailText;
+    item.name = src.name;
+    item.percent = src.percent;
+    item.statusText = src.statusText;
+    item.detailText = src.detailText;
     return item;
 }
 
@@ -431,23 +401,30 @@ inline UiModel dn_build_ui_model_from_inputs(const UiModelInputs& in) {
     m.overview.messageText = "今天额度还够";
     m.overview.updatedAtText = "cached";
 
-    m.aiUsage.totalPercent = 72;
-    m.aiUsage.chatgpt = dn_usage_item("ChatGPT", 72, "OK", "via cc-switch");
-    m.aiUsage.codex = dn_usage_item("Codex", 58, "正常", "");
-    m.aiUsage.minimax = dn_usage_item("MiniMax", 86, "充足", "");
-    m.aiUsage.updatedAtText = "cached";
-    m.aiUsage.warningText = "";
+    const AIUsageStatus aiStatus = dn_ai_usage_demo_status();
+    m.aiUsage.totalPercent = aiStatus.totalPercent;
+    m.aiUsage.chatgpt = dn_usage_item(aiStatus.chatgpt);
+    m.aiUsage.codex = dn_usage_item(aiStatus.codex);
+    m.aiUsage.minimax = dn_usage_item(aiStatus.minimax);
+    m.aiUsage.updatedAtText = aiStatus.updatedAtText;
+    m.aiUsage.warningText = aiStatus.warningText;
 
+    EnvironmentInput envIn;
+    envIn.valid = in.temperatureValid;
+    envIn.temperatureC = in.temperatureC;
+    envIn.humidityPct = in.humidityPct;
+    envIn.lux = in.lux;
+    const EnvironmentStatus envStatus = dn_evaluate_environment(envIn);
     m.environment.temperatureC = in.temperatureC;
     m.environment.humidityPct = in.humidityPct;
     m.environment.lux = in.lux;
-    m.environment.valid = in.temperatureValid;
-    m.environment.score = dn_environment_score(in);
-    m.environment.gradeText = dn_environment_grade(m.environment.score);
-    m.environment.temperatureGrade = "OK";
-    m.environment.humidityGrade = "OK";
-    m.environment.lightGrade = "OK";
-    m.environment.adviceText = "保持专注";
+    m.environment.valid = envStatus.valid;
+    m.environment.score = envStatus.score;
+    m.environment.gradeText = envStatus.gradeText;
+    m.environment.temperatureGrade = envStatus.temperatureGrade;
+    m.environment.humidityGrade = envStatus.humidityGrade;
+    m.environment.lightGrade = envStatus.lightGrade;
+    m.environment.adviceText = envStatus.adviceText;
 
     m.settings.rowCount = 5;
     m.settings.rows[0] = dn_settings_row("Power", "Balanced", true);
