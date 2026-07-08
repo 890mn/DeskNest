@@ -74,7 +74,9 @@ public:
 #endif
 
 #if ENABLE_ORIENTATION_INPUT
-    // 横竖屏切换 —— 同步 orientation + 跳到对应默认页（用 pre_landscape_page 恢复）
+    // 姿态同步入口。
+    // 当前 MVP 不做运行时横竖屏动态切换；LANDSCAPE 检测不改变 page。
+    // 横屏只作为后期 boot-time display orientation adapter 保留。
     void updateOrientation(OrientationState detected, uint32_t now_ms);
 #endif
 
@@ -97,7 +99,8 @@ public:
     void forceRotLock(RotationLock r)      { _s.rotLock = r; }
     void notifyInput()                     { _s.lastInputMs = millis(); }
 
-    // 工具：竖/横屏页面循环
+    // 工具：页面循环。
+    // 当前运行路径只使用 portrait；landscape helpers 为后期启动横屏适配保留。
     static UIPage nextPortrait(UIPage p);
     static UIPage prevPortrait(UIPage p);
     static UIPage nextLandscape(UIPage p);

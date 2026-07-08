@@ -3,6 +3,7 @@
 // "栖于桌面，息于常亮之间"
 
 #include "state_machine.h"
+#include "page_registry.h"
 
 #include <Arduino.h>
 
@@ -10,29 +11,26 @@ namespace desknest {
 
 StateMachine g_state;
 
+namespace {
+
+bool isLandscapePage(UIPage p) {
+    return p == PAGE_LANDSCAPE_OVERVIEW ||
+           p == PAGE_LANDSCAPE_FOCUS ||
+           p == PAGE_LANDSCAPE_CUSTOM;
+}
+
+} // namespace
+
 // ============================================================================
 // 页面循环
 // ============================================================================
 
 UIPage StateMachine::nextPortrait(UIPage p) {
-    // 循环：OVERVIEW → AI_USAGE → ENVIRONMENT → SETTINGS → OVERVIEW
-    switch (p) {
-        case PAGE_PORTRAIT_OVERVIEW:    return PAGE_PORTRAIT_AI_USAGE;
-        case PAGE_PORTRAIT_AI_USAGE:    return PAGE_PORTRAIT_ENVIRONMENT;
-        case PAGE_PORTRAIT_ENVIRONMENT: return PAGE_PORTRAIT_SETTINGS;
-        case PAGE_PORTRAIT_SETTINGS:    return PAGE_PORTRAIT_OVERVIEW;
-        default:                        return PAGE_PORTRAIT_OVERVIEW;
-    }
+    return dn_next_page_in_group(PAGE_GROUP_PORTRAIT, p);
 }
 
 UIPage StateMachine::prevPortrait(UIPage p) {
-    switch (p) {
-        case PAGE_PORTRAIT_OVERVIEW:    return PAGE_PORTRAIT_SETTINGS;
-        case PAGE_PORTRAIT_AI_USAGE:    return PAGE_PORTRAIT_OVERVIEW;
-        case PAGE_PORTRAIT_ENVIRONMENT: return PAGE_PORTRAIT_AI_USAGE;
-        case PAGE_PORTRAIT_SETTINGS:    return PAGE_PORTRAIT_ENVIRONMENT;
-        default:                        return PAGE_PORTRAIT_OVERVIEW;
-    }
+    return dn_prev_page_in_group(PAGE_GROUP_PORTRAIT, p);
 }
 
 UIPage StateMachine::nextLandscape(UIPage p) {
@@ -97,6 +95,9 @@ void StateMachine::applyFace_(GestureEvent face, uint32_t now_ms) {
         _s.face_state = FACE_STATE_UP;
         _s.system = SYSTEM_ACTIVE;
         _s.page   = _s.pre_face_down_page;
+        _s.orientation = isLandscapePage(_s.page)
+            ? ORIENTATION_LANDSCAPE
+            : ORIENTATION_PORTRAIT;
         _s.lastInputMs = now_ms;
         Serial.printf("[D][STATE] → ACTIVE (face up, page %d restored)\n",
                       (int)_s.page);
@@ -290,31 +291,14 @@ void StateMachine::applyGesture_(GestureEvent g, uint32_t now_ms) {
             break;
         }
         case GESTURE_ROTATE_PORTRAIT_TO_LANDSCAPE: {
-            if (_s.rotLock == ROT_LOCKED_LANDSCAPE ||
-                _s.rotLock == ROT_LOCKED_TEMP_5S) {
-                // 允许进入 LANDSCAPE
-                _s.orientation = ORIENTATION_LANDSCAPE;
-                _s.page = PAGE_LANDSCAPE_FOCUS;
-                Serial.println("[D][STATE] rotate P→L → LANDSCAPE_FOCUS");
-            } else if (_s.rotLock == ROT_LOCKED_PORTRAIT) {
-                Serial.println("[D][STATE] rotate blocked by ROT_LOCKED_PORTRAIT");
-            } else {
-                _s.orientation = ORIENTATION_LANDSCAPE;
-                _s.page = PAGE_LANDSCAPE_FOCUS;
-                Serial.println("[D][STATE] rotate P→L → LANDSCAPE_FOCUS");
-            }
+            // 当前 MVP 不支持运行时横竖屏动态切换。
+            // K10 屏幕方向更适合初始化时选择；横屏页面保留给后期
+            // boot-time landscape adapter。
+            Serial.println("[D][STATE] rotate P→L ignored (runtime landscape disabled)");
             break;
         }
         case GESTURE_ROTATE_LANDSCAPE_TO_PORTRAIT: {
-            if (_s.rotLock == ROT_LOCKED_PORTRAIT) {
-                // 已锁竖屏，但当前是横屏：跳过去
-                _s.orientation = ORIENTATION_PORTRAIT;
-                _s.page = PAGE_PORTRAIT_OVERVIEW;
-            } else {
-                _s.orientation = ORIENTATION_PORTRAIT;
-                _s.page = PAGE_PORTRAIT_OVERVIEW;
-                Serial.println("[D][STATE] rotate L→P → PORTRAIT_OVERVIEW");
-            }
+            Serial.println("[D][STATE] rotate L→P ignored (runtime landscape disabled)");
             break;
         }
         default: break;
@@ -326,33 +310,9 @@ void StateMachine::applyGesture_(GestureEvent g, uint32_t now_ms) {
 // ============================================================================
 
 void StateMachine::applyOrientation_(OrientationState detected, uint32_t now_ms) {
-    if (detected == ORIENTATION_UNKNOWN) return;
-    if (detected == ORIENTATION_FACE_DOWN) return;  // 翻面已在外层处理
-    if (_s.orientation == detected) return;
-    if (_s.system == SYSTEM_FACE_DOWN_SLEEP) return;
-
-    // 锁定检查
-    if (_s.rotLock == ROT_LOCKED_PORTRAIT && detected == ORIENTATION_LANDSCAPE) return;
-    if (_s.rotLock == ROT_LOCKED_LANDSCAPE && detected == ORIENTATION_PORTRAIT) return;
-
-    // 切换：记忆模式 —— 每种姿态记下自己当前页面，转回来时恢复
-    const OrientationState old = _s.orientation;
-    _s.orientation = detected;
-    if (detected == ORIENTATION_LANDSCAPE) {
-        if (old == ORIENTATION_PORTRAIT) {
-            // P→L：保存当前页到 portrait 记忆，去横屏记忆的页
-            _s.last_portrait_page = _s.page;
-            _s.page = _s.last_landscape_page;
-        }
-    } else {
-        if (old == ORIENTATION_LANDSCAPE) {
-            // L→P：保存当前页到 landscape 记忆，回到 portrait 记忆的页
-            _s.last_landscape_page = _s.page;
-            _s.page = _s.last_portrait_page;
-        }
-    }
-    Serial.printf("[D][STATE] orient %d→%d page=%d\n",
-                  (int)old, (int)detected, (int)_s.page);
+    // 当前 MVP 不做运行时横竖屏动态切换。orientation 检测仍可供调试/后期
+    // boot-time landscape adapter 使用，但不在主状态机里改变 page。
+    (void)detected;
     (void)now_ms;
 }
 
