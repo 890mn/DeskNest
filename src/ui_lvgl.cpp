@@ -6,6 +6,7 @@
 #include "boot_logo_asset.h"
 #include "config.h"
 #include "ui_model.h"
+#include "desknest_fonts.h"
 
 #include <Arduino.h>
 #include <freertos/FreeRTOS.h>
@@ -15,40 +16,6 @@
 #include <unihiker_k10.h>
 
 extern SemaphoreHandle_t xLvglMutex;
-bool myGetGlyphDscCb_24(const lv_font_t*, lv_font_glyph_dsc_t*, uint32_t, uint32_t);
-const uint8_t* myGetGlyphBitmapCb_24(const lv_font_t*, uint32_t);
-bool myGetGlyphDscCb_16(const lv_font_t*, lv_font_glyph_dsc_t*, uint32_t, uint32_t);
-const uint8_t* myGetGlyphBitmapCb_16(const lv_font_t*, uint32_t);
-
-static const lv_font_t* font24() {
-    static const lv_font_t f = {
-        .get_glyph_dsc = myGetGlyphDscCb_24,
-        .get_glyph_bitmap = myGetGlyphBitmapCb_24,
-        .line_height = 27,
-        .base_line = 3,
-        .subpx = LV_FONT_SUBPX_NONE,
-        .underline_position = 0,
-        .underline_thickness = 0,
-        .dsc = nullptr,
-        .fallback = nullptr,
-    };
-    return &f;
-}
-
-static const lv_font_t* font16() {
-    static const lv_font_t f = {
-        .get_glyph_dsc = myGetGlyphDscCb_16,
-        .get_glyph_bitmap = myGetGlyphBitmapCb_16,
-        .line_height = 15,
-        .base_line = 3,
-        .subpx = LV_FONT_SUBPX_NONE,
-        .underline_position = 0,
-        .underline_thickness = 0,
-        .dsc = nullptr,
-        .fallback = nullptr,
-    };
-    return &f;
-}
 
 namespace desknest {
 
@@ -159,19 +126,19 @@ private:
 };
 
 static const lv_font_t* font_cn_body() {
-    return font16();
+    return &lv_font_16;
 }
 
 static const lv_font_t* font_cn_title() {
-    return font24();
+    return &lv_font_24;
 }
 
 static const lv_font_t* font_ascii_body() {
-    return &lv_font_montserrat_14;
+    return &lv_font_14;
 }
 
 static const lv_font_t* font_symbol() {
-    return &lv_font_montserrat_14;
+    return &lv_font_14;
 }
 
 static void style_init_once() {
