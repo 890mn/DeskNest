@@ -29,36 +29,23 @@ namespace desknest {
 #define DESKNEST_VERSION "0.1.0"
 #endif
 
-// ============================================================================
-// 硬件引脚集中表
-// ============================================================================
-//
-// 设计原则：**以 K10 BSP 高层 API 为唯一来源**，业务代码不直接操作 GPIO。
-// - 按钮 / RGB / 屏幕 / 传感器 全部走 k10.xxx
-// - 真要直接 GPIO（analogRead 等）才用本表
-// - 旧版 pins::BUTTON_A / BUTTON_B 已废弃（BSP 的 buttonA/buttonB/buttonAB
-//   自动管引脚，不需要业务层再持有一份）
+// Optional TokenNest HTTP bridge.
+// These should be set in platformio.local.ini (gitignored), NOT the public
+// platformio.ini. If left empty here, the firmware falls back to NVS-config
+// (Config Portal flow — see nvs_key::WIFI_SSID / nvs_key::WIFI_PASS /
 
-namespace pins {
-    // I2C 总线（AHT20 + LTR303 + SC7A20H 共用）—— 由 K10 BSP 管
-    // constexpr uint8_t I2C_SDA = 47;   // 仅留注释，BSP 内已定义
-    // constexpr uint8_t I2C_SCL = 48;
+#ifndef DESKNEST_WIFI_SSID
+#define DESKNEST_WIFI_SSID ""
+#endif
 
-    // 3 颗 WS2812（RGB）—— BSP 用 k10.rgb->write()，引脚自动
-    // constexpr uint8_t WS2812_DIN = 46;
+#ifndef DESKNEST_WIFI_PASS
+#define DESKNEST_WIFI_PASS ""
+#endif
 
-    // 板载按键 —— **走 k10.buttonA / buttonB / buttonAB 的 isPressed()**
-    //   A:   P5  = eP5_KeyA   (BSP 内部)
-    //   B:   P11 = eP11_KeyB  (BSP 内部)
-    //   A+B: k10.buttonAB 同时检测两端
-    // 不再持有 BUTTON_A / BUTTON_B 常量——单源真相在 BSP
+#ifndef DESKNEST_TOKENNEST_STATUS_URL
+#define DESKNEST_TOKENNEST_STATUS_URL ""
+#endif
 
-    // 外接电池 ADC（K10 出厂无内置电池，此项为扩展预留，待原理图复核）
-    constexpr uint8_t BATTERY_ADC   = 5;    // A4
-
-    // 屏幕背光：K10 BSP 用 eLCD_BLK 自行管理，不要直接操作
-    constexpr uint8_t TFT_BL_PWM    = 0;    // 占位：实际背光走 k10.initScreen()
-} // namespace pins
 
 // ============================================================================
 // 4 轴状态枚举（核心 —— 见 plan §2）
@@ -89,10 +76,11 @@ enum OrientationState : uint8_t {
     ORIENTATION_FACE_DOWN,
 };
 
-// 3) UI 页面（8 个：竖 4 + 横 3 + 特殊 1）
+// 3) UI 页面（9 个：竖 5 + 横 3 + 特殊 1）
 enum UIPage : uint8_t {
     PAGE_PORTRAIT_OVERVIEW = 0,
     PAGE_PORTRAIT_AI_USAGE,
+    PAGE_PORTRAIT_MENU,          // 今天吃什么（新）
     PAGE_PORTRAIT_ENVIRONMENT,
     PAGE_PORTRAIT_SETTINGS,
     PAGE_LANDSCAPE_OVERVIEW,

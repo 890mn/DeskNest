@@ -13,6 +13,7 @@
 核心功能：
 
 - **AI 用量哨兵**：ChatGPT Plus/Pro（Codex 订阅）与 MiniMax 用量进度一眼可见
+- **本地用量聚合**：[`TokenNest/`](TokenNest/README.md) Node.js 子项目，本机后台拉用量，K10 未来通过 HTTP 拉
 - **桌面环境站**：温湿度、光照、舒适度
 - **翻面栖息**：物理翻过屏即"息"，再翻回数据仍在
 - **手势导航**：摇一摇、翻一翻、按一按
@@ -48,6 +49,9 @@ pio run -e desknest_k10 -t upload # 烧录
 pio device monitor                # 串口监视
 ```
 
+**首次编译前**：WiFi SSID/密码与 TokenNest URL 是个人凭证，**不要**进 git。
+脚本 `scripts/pio_local_config.py` 会在第一次 `pio run` 时自动从 `platformio.local.ini.example` 复制一份 `platformio.local.ini` 并打印提示。复制完后**编辑** `platformio.local.ini` 填入真实值即可。该文件已被 `.gitignore` 排除。
+
 ### Arduino IDE
 
 1. 安装 K10 BSP（见 [docs/architecture.md]）
@@ -70,7 +74,6 @@ pio device monitor                # 串口监视
 - [ ] P0-E 翻面栖息
 - [ ] P0-F 端到端 demo
 - [ ] P1-A WiFi 配网
-- [ ] P1-B cc-switch 同步
 - [ ] P1-C 告警与缓存
 - [ ] P1-D 专注页
 - [ ] P1-E 文档
@@ -84,13 +87,12 @@ pio device monitor                # 串口监视
 - 架构说明：`docs/architecture.md`（P1-E 阶段补全）
 - 引脚表：`docs/pinmap.md`（P0-A 复核后填入）
 - 电源预算：`docs/power-budget.md`（P0-E 阶段补全）
-- cc-switch 集成：`docs/cc-switch-integration.md`（P1-B 阶段补全）
 - 演示脚本：`docs/demo-script.md`（P1-E 阶段补全）
+- 本地用量聚合：[`TokenNest/README.md`](TokenNest/README.md) + [`TokenNest/docs/WIRE_FORMAT.md`](TokenNest/docs/WIRE_FORMAT.md)
 
 ---
 
 ## 致谢
 
 - [DFRobot](https://www.dfrobot.com/) — UNIHIKER K10 与 `unihiker_k10.h` 库
-- [farion1231/cc-switch](https://github.com/farion1231/cc-switch) — 用量追踪思路与本地代理
 - [Espressif](https://www.espressif.com/) — ESP32-S3 与 Arduino 内核

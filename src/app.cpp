@@ -14,6 +14,7 @@
 #include "state_machine.h"
 #include "ui.h"
 #include "buttons.h"
+#include "ai_usage_module.h"
 
 #include <Arduino.h>
 
@@ -54,6 +55,7 @@ const char* pageName(UIPage p) {
     switch (p) {
         case PAGE_PORTRAIT_OVERVIEW:    return "P_OVR";
         case PAGE_PORTRAIT_AI_USAGE:    return "P_AI";
+        case PAGE_PORTRAIT_MENU:        return "P_MENU";
         case PAGE_PORTRAIT_ENVIRONMENT: return "P_ENV";
         case PAGE_PORTRAIT_SETTINGS:    return "P_SET";
         case PAGE_LANDSCAPE_OVERVIEW:   return "L_OVR";
@@ -149,6 +151,9 @@ void dn_app_setup() {
     desknest::g_gesture.begin();
     desknest::g_state.begin();
 
+    Serial.println("[D][BOOT] P0-C.5: initializing WiFi/time background service...");
+    desknest::dn_ai_usage_service_begin();
+
     Serial.println("[D][BOOT] P0-D: initializing UI...");
     dn_ui_setup();
 
@@ -186,6 +191,8 @@ void dn_app_loop() {
     // 4) 状态机
     const OrientationState detected = g_gesture.orientation();
     g_state.update(g, b, detected, now);
+
+    dn_ai_usage_service_tick();
 
     // 5) UI 渲染（按页面变化或 1Hz 节流，内部做）
     dn_ui_render();

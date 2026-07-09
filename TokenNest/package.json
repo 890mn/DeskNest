@@ -1,0 +1,21 @@
+{
+  "name": "tokennest",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TokenNest — DeskNest 本地端 AI 用量查询服务。聚合 ChatGPT Plus/Pro 与 MiniMax Token Plan 的 5h/weekly 用量，为 DeskNest K10 固件提供 cc-switch 兼容的 /status.json 接口。",
+  "type": "module",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=18.17.0"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test test/*.test.js",
+    "probe:chatgpt": "node scripts/probe-chatgpt.js",
+    "probe:minimax": "node scripts/probe-minimax.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "license": "MIT"
+}

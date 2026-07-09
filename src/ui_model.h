@@ -37,6 +37,15 @@ enum ShakeVisualPhase : uint8_t {
     SHAKE_VISUAL_RETURNING,
 };
 
+enum UiWiFiState : uint8_t {
+    UI_WIFI_UNCONFIGURED = 0,
+    UI_WIFI_DISCONNECTED,
+    UI_WIFI_CONNECTING,
+    UI_WIFI_CONNECTED,
+    UI_WIFI_NO_SSID,
+    UI_WIFI_AUTH_FAILED,
+};
+
 struct UiViewState {
     ScreenMode mode = SCREEN_PORTRAIT_OVERVIEW;
     UIPage page = PAGE_PORTRAIT_OVERVIEW;
@@ -85,6 +94,7 @@ struct UiStatusProps {
     const char* orientationText = "";
     const char* wifiText = "";
     const char* syncText = "";
+    UiWiFiState wifiState = UI_WIFI_UNCONFIGURED;
     uint8_t batteryPercent = 0;
     bool batteryValid = false;
     bool charging = false;
@@ -110,8 +120,16 @@ struct UiOverviewProps {
 struct UiUsageItemProps {
     const char* name = "";
     uint8_t percent = 0;
+    uint8_t weeklyPercent = 0;
     const char* statusText = "";
     const char* detailText = "";
+    const char* fiveHourExpireAt = "";
+    const char* weekExpireAt = "";
+};
+
+struct UiCodexResetProps {
+    const char* name = "";
+    const char* expireAt = "";
 };
 
 struct UiAiUsageProps {
@@ -119,8 +137,11 @@ struct UiAiUsageProps {
     UiUsageItemProps minimax;
     UiUsageItemProps codex;
     UiUsageItemProps chatgpt;
+    UiCodexResetProps codexResets[4];
+    uint8_t codexResetCount = 0;
     const char* updatedAtText = "";
     const char* warningText = "";
+    uint16_t nextRefreshInSec = 0;
 };
 
 struct UiEnvironmentProps {
@@ -183,6 +204,27 @@ struct UiCustomProps {
     const char* hintText = "";
 };
 
+struct UiMenuCandidateProps {
+    const char* name = "";        // "番茄牛腩面"
+    const char* price = "";       // "¥28"  （已含符号）
+    uint8_t score = 0;            // 0-100，UI 显示 ÷10
+    bool active = false;          // 今日推荐（数据层决定）
+};
+
+struct UiMenuGroupProps {
+    const char* name = "";        // "面食"
+    UiMenuCandidateProps candidates[6];
+    uint8_t candidateCount = 0;
+};
+
+struct UiMenuProps {
+    const char* ask = "";         // "今天，吃点热的？"
+    const char* lastMeal = "";    // "昨天 · 日式咖喱饭"
+    UiMenuGroupProps groups[4];
+    uint8_t groupCount = 0;
+    const char* diceHint = "";    // "[A] 重抽 · [B] 记下"
+};
+
 struct UiFaceDownProps {
     const char* line1 = "";
     const char* line2 = "";
@@ -214,6 +256,7 @@ struct UiModel {
 
     UiOverviewProps overview;
     UiAiUsageProps aiUsage;
+    UiMenuProps menu;
     UiEnvironmentProps environment;
     UiSettingsProps settings;
     UiLandscapeOverviewProps landscapeOverview;
@@ -269,6 +312,7 @@ inline ScreenMode dn_screen_mode_for_page(UIPage p) {
     switch (p) {
         case PAGE_PORTRAIT_OVERVIEW:    return SCREEN_PORTRAIT_OVERVIEW;
         case PAGE_PORTRAIT_AI_USAGE:
+        case PAGE_PORTRAIT_MENU:
         case PAGE_PORTRAIT_ENVIRONMENT:
         case PAGE_PORTRAIT_SETTINGS:    return SCREEN_PORTRAIT_DETAIL;
         case PAGE_LANDSCAPE_OVERVIEW:   return SCREEN_LANDSCAPE_OVERVIEW;
@@ -310,8 +354,11 @@ inline UiUsageItemProps dn_usage_item(const AIUsageItemStatus& src) {
     UiUsageItemProps item;
     item.name = src.name;
     item.percent = src.percent;
+    item.weeklyPercent = src.weeklyPercent;
     item.statusText = src.statusText;
     item.detailText = src.detailText;
+    item.fiveHourExpireAt = src.fiveHourExpireAt;
+    item.weekExpireAt = src.weekExpireAt;
     return item;
 }
 
@@ -401,6 +448,8 @@ inline UiModel dn_build_ui_model_from_inputs(const UiModelInputs& in) {
     m.aiUsage.minimax = dn_usage_item(aiStatus.minimax);
     m.aiUsage.updatedAtText = aiStatus.updatedAtText;
     m.aiUsage.warningText = aiStatus.warningText;
+    m.aiUsage.nextRefreshInSec = aiStatus.nextRefreshInSec;
+    m.overview.aiTotalPercent = aiStatus.totalPercent;
 
     EnvironmentInput envIn;
     envIn.valid = in.temperatureValid;
@@ -466,6 +515,48 @@ inline UiModel dn_build_ui_model_from_inputs(const UiModelInputs& in) {
     m.animation.shakeProgressPct = shakeAnimationPercent(in.shakePhase);
     m.animation.pageChanged = false;
     m.animation.forceFullRedraw = false;
+
+    // ---- 今天吃什么（MenuModule mock） ----
+    m.menu.ask = "今天，吃点热的？";
+    m.menu.lastMeal = "昨天 · 日式咖喱饭";
+
+    {
+        auto& g = m.menu.groups[0];
+        g.name = "面食";
+        g.candidateCount = 2;
+        g.candidates[0].name = "番茄牛腩面";
+        g.candidates[0].price = "¥28";
+        g.candidates[0].score = 84;
+        g.candidates[0].active = false;
+        g.candidates[1].name = "葱油拌面";
+        g.candidates[1].price = "¥12";
+        g.candidates[1].score = 72;
+        g.candidates[1].active = false;
+    }
+    {
+        auto& g = m.menu.groups[1];
+        g.name = "汤锅";
+        g.candidateCount = 2;
+        g.candidates[0].name = "砂锅豆腐汤";
+        g.candidates[0].price = "¥22";
+        g.candidates[0].score = 81;
+        g.candidates[0].active = true;   // active = 推荐
+        g.candidates[1].name = "韩式泡菜锅";
+        g.candidates[1].price = "¥35";
+        g.candidates[1].score = 78;
+        g.candidates[1].active = false;
+    }
+    {
+        auto& g = m.menu.groups[2];
+        g.name = "小炒";
+        g.candidateCount = 1;
+        g.candidates[0].name = "麻辣香锅";
+        g.candidates[0].price = "¥42";
+        g.candidates[0].score = 87;
+        g.candidates[0].active = false;
+    }
+    m.menu.groupCount = 3;
+    m.menu.diceHint = "[A] 重抽 · [B] 记下";
 
     return m;
 }

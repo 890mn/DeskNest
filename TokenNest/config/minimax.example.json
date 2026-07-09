@@ -1,0 +1,4 @@
+{
+  "_comment": "MiniMax / MiniMax Token Plan API key。复制为 minimax.json 后填入 apiKey 字段。从 https://platform.minimaxi.com 申请。",
+  "apiKey": "REPLACE_ME_WITH_YOUR_MINIMAX_API_KEY"
+}

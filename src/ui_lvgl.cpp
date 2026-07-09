@@ -1,0 +1,1099 @@
+// src/ui_lvgl.cpp
+// DeskNest LVGL renderer. This is the single production UI path.
+
+#include "ui.h"
+#include "ai_icon_assets.h"
+#include "config.h"
+#include "ui_model.h"
+
+#include <Arduino.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
+#include <stdio.h>
+#include <string.h>
+#include <unihiker_k10.h>
+
+extern SemaphoreHandle_t xLvglMutex;
+bool myGetGlyphDscCb_24(const lv_font_t*, lv_font_glyph_dsc_t*, uint32_t, uint32_t);
+const uint8_t* myGetGlyphBitmapCb_24(const lv_font_t*, uint32_t);
+bool myGetGlyphDscCb_16(const lv_font_t*, lv_font_glyph_dsc_t*, uint32_t, uint32_t);
+const uint8_t* myGetGlyphBitmapCb_16(const lv_font_t*, uint32_t);
+
+static const lv_font_t* font24() {
+    static const lv_font_t f = {
+        .get_glyph_dsc = myGetGlyphDscCb_24,
+        .get_glyph_bitmap = myGetGlyphBitmapCb_24,
+        .line_height = 27,
+        .base_line = 3,
+        .subpx = LV_FONT_SUBPX_NONE,
+        .underline_position = 0,
+        .underline_thickness = 0,
+        .dsc = nullptr,
+        .fallback = nullptr,
+    };
+    return &f;
+}
+
+static const lv_font_t* font16() {
+    static const lv_font_t f = {
+        .get_glyph_dsc = myGetGlyphDscCb_16,
+        .get_glyph_bitmap = myGetGlyphBitmapCb_16,
+        .line_height = 15,
+        .base_line = 3,
+        .subpx = LV_FONT_SUBPX_NONE,
+        .underline_position = 0,
+        .underline_thickness = 0,
+        .dsc = nullptr,
+        .fallback = nullptr,
+    };
+    return &f;
+}
+
+namespace desknest {
+
+extern UNIHIKER_K10 k10;
+
+namespace {
+
+constexpr int SCREEN_W = 240;
+constexpr int SCREEN_H = 320;
+constexpr int HEADER_H = 32;
+constexpr int CONTENT_Y = 34;
+constexpr int CONTENT_H = 258;
+constexpr int HOME_Y = 296;
+constexpr int HOME_H = 24;
+
+static constexpr uint32_t C_BG        = 0x0F1419;
+static constexpr uint32_t C_CARD      = 0x1A2128;
+static constexpr uint32_t C_CARD_HI   = 0x222B34;
+static constexpr uint32_t C_LINE      = 0x2A3447;
+static constexpr uint32_t C_TEXT      = 0xECE8DC;
+static constexpr uint32_t C_LABEL     = 0x8B95A8;
+static constexpr uint32_t C_DIM       = 0x5A6478;
+static constexpr uint32_t C_BRAND     = 0x9CB89B;
+static constexpr uint32_t C_SAND      = 0xD4B896;
+static constexpr uint32_t C_BLUE      = 0xA8B5C4;
+static constexpr uint32_t C_GPT       = 0x8EA9C4;
+static constexpr uint32_t C_MINIMAX   = 0xB49ACF;
+static constexpr uint32_t C_ALERT     = 0xC97C7C;
+
+static lv_style_t sty_plain;
+static lv_style_t sty_card;
+static lv_style_t sty_text24;
+static lv_style_t sty_text16;
+static lv_style_t sty_ascii14;
+static lv_style_t sty_label16;
+static lv_style_t sty_dim16;
+static lv_style_t sty_brand16;
+static lv_style_t sty_brand24;
+static lv_style_t sty_time32;
+static lv_style_t sty_symbol14;
+static lv_style_t sty_bar_track;
+static lv_style_t sty_pill_on;
+static lv_style_t sty_pill_off;
+static lv_style_t sty_divider;
+static lv_style_t sty_danger;
+static bool s_styles_ready = false;
+
+static lv_obj_t* s_scr = nullptr;
+static UIPage s_visible_page = PAGE_COUNT;
+static bool s_ready = false;
+static uint32_t s_last_ui_update_ms = 0;
+static uint32_t s_last_lvgl_pump_ms = 0;
+
+struct ChromeObjects {
+    lv_obj_t* header = nullptr;
+    lv_obj_t* title = nullptr;
+    lv_obj_t* page = nullptr;
+    lv_obj_t* divider = nullptr;
+    lv_obj_t* home = nullptr;
+    lv_obj_t* pills[5] = {};
+};
+
+struct PageObjects {
+    lv_obj_t* root = nullptr;
+    bool built = false;
+
+    lv_obj_t* labels[16] = {};
+    lv_obj_t* bars[16] = {};
+    lv_obj_t* rows[8] = {};
+    lv_obj_t* objs[16] = {};
+};
+
+static ChromeObjects s_chrome;
+static PageObjects s_pages[PAGE_COUNT];
+static UiModel s_model;
+
+class LvglLock {
+public:
+    LvglLock() {
+        if (xLvglMutex) {
+            xSemaphoreTake(xLvglMutex, portMAX_DELAY);
+            locked_ = true;
+        }
+    }
+
+    ~LvglLock() {
+        if (locked_) xSemaphoreGive(xLvglMutex);
+    }
+
+private:
+    bool locked_ = false;
+};
+
+static const lv_font_t* font_cn_body() {
+    return font16();
+}
+
+static const lv_font_t* font_cn_title() {
+    return font24();
+}
+
+static const lv_font_t* font_ascii_body() {
+    return &lv_font_montserrat_14;
+}
+
+static const lv_font_t* font_symbol() {
+    return &lv_font_montserrat_14;
+}
+
+static void style_init_once() {
+    if (s_styles_ready) return;
+    s_styles_ready = true;
+
+    lv_style_init(&sty_plain);
+    lv_style_set_bg_opa(&sty_plain, LV_OPA_TRANSP);
+    lv_style_set_border_width(&sty_plain, 0);
+    lv_style_set_pad_all(&sty_plain, 0);
+    lv_style_set_radius(&sty_plain, 0);
+
+    lv_style_init(&sty_card);
+    lv_style_set_bg_color(&sty_card, lv_color_hex(C_CARD));
+    lv_style_set_bg_opa(&sty_card, LV_OPA_COVER);
+    lv_style_set_border_width(&sty_card, 0);
+    lv_style_set_radius(&sty_card, 3);
+    lv_style_set_pad_hor(&sty_card, 8);
+    lv_style_set_pad_ver(&sty_card, 6);
+
+    lv_style_init(&sty_text24);
+    lv_style_set_text_color(&sty_text24, lv_color_hex(C_TEXT));
+    lv_style_set_text_font(&sty_text24, font_cn_title());
+
+    lv_style_init(&sty_text16);
+    lv_style_set_text_color(&sty_text16, lv_color_hex(C_TEXT));
+    lv_style_set_text_font(&sty_text16, font_cn_body());
+
+    lv_style_init(&sty_ascii14);
+    lv_style_set_text_color(&sty_ascii14, lv_color_hex(C_TEXT));
+    lv_style_set_text_font(&sty_ascii14, font_ascii_body());
+
+    lv_style_init(&sty_label16);
+    lv_style_set_text_color(&sty_label16, lv_color_hex(C_LABEL));
+    lv_style_set_text_font(&sty_label16, font_cn_body());
+
+    lv_style_init(&sty_dim16);
+    lv_style_set_text_color(&sty_dim16, lv_color_hex(C_DIM));
+    lv_style_set_text_font(&sty_dim16, font_cn_body());
+
+    lv_style_init(&sty_brand16);
+    lv_style_set_text_color(&sty_brand16, lv_color_hex(C_BRAND));
+    lv_style_set_text_font(&sty_brand16, font_cn_body());
+
+    lv_style_init(&sty_brand24);
+    lv_style_set_text_color(&sty_brand24, lv_color_hex(C_BRAND));
+    lv_style_set_text_font(&sty_brand24, font_cn_title());
+
+    lv_style_init(&sty_time32);
+    lv_style_set_text_color(&sty_time32, lv_color_hex(C_TEXT));
+    lv_style_set_text_font(&sty_time32, font_cn_title());
+
+    lv_style_init(&sty_symbol14);
+    lv_style_set_text_color(&sty_symbol14, lv_color_hex(C_LABEL));
+    lv_style_set_text_font(&sty_symbol14, font_symbol());
+
+    lv_style_init(&sty_bar_track);
+    lv_style_set_bg_color(&sty_bar_track, lv_color_hex(C_LINE));
+    lv_style_set_bg_opa(&sty_bar_track, LV_OPA_COVER);
+    lv_style_set_border_width(&sty_bar_track, 0);
+    lv_style_set_radius(&sty_bar_track, 2);
+
+    lv_style_init(&sty_pill_on);
+    lv_style_set_bg_color(&sty_pill_on, lv_color_hex(C_BRAND));
+    lv_style_set_bg_opa(&sty_pill_on, LV_OPA_COVER);
+    lv_style_set_border_width(&sty_pill_on, 0);
+    lv_style_set_radius(&sty_pill_on, 2);
+
+    lv_style_init(&sty_pill_off);
+    lv_style_set_bg_color(&sty_pill_off, lv_color_hex(C_LINE));
+    lv_style_set_bg_opa(&sty_pill_off, LV_OPA_COVER);
+    lv_style_set_border_width(&sty_pill_off, 0);
+    lv_style_set_radius(&sty_pill_off, 2);
+
+    lv_style_init(&sty_divider);
+    lv_style_set_bg_color(&sty_divider, lv_color_hex(C_LINE));
+    lv_style_set_bg_opa(&sty_divider, LV_OPA_COVER);
+    lv_style_set_border_width(&sty_divider, 0);
+    lv_style_set_radius(&sty_divider, 0);
+
+    lv_style_init(&sty_danger);
+    lv_style_set_bg_color(&sty_danger, lv_color_hex(C_CARD));
+    lv_style_set_bg_opa(&sty_danger, LV_OPA_COVER);
+    lv_style_set_border_side(&sty_danger, LV_BORDER_SIDE_LEFT);
+    lv_style_set_border_width(&sty_danger, 2);
+    lv_style_set_border_color(&sty_danger, lv_color_hex(C_ALERT));
+    lv_style_set_radius(&sty_danger, 2);
+    lv_style_set_pad_hor(&sty_danger, 8);
+    lv_style_set_pad_ver(&sty_danger, 5);
+}
+
+static void plain(lv_obj_t* obj) {
+    lv_obj_remove_style_all(obj);
+    lv_obj_add_style(obj, &sty_plain, 0);
+}
+
+static lv_obj_t* make_label(lv_obj_t* parent, lv_style_t* style, const char* text = "") {
+    lv_obj_t* label = lv_label_create(parent);
+    lv_obj_add_style(label, style, 0);
+    lv_label_set_text(label, text);
+    lv_label_set_long_mode(label, LV_LABEL_LONG_CLIP);
+    return label;
+}
+
+static void set_text(lv_obj_t* label, const char* text) {
+    if (!label) return;
+    const char* next = text ? text : "";
+    const char* current = lv_label_get_text(label);
+    if (current && strcmp(current, next) == 0) return;
+    lv_label_set_text(label, next);
+}
+
+static void set_hhmm_text(lv_obj_t* label, const char* text) {
+    if (!label) return;
+    char hhmm[8] = "--:--";
+    if (text && strlen(text) >= 5) {
+        memcpy(hhmm, text, 5);
+        hhmm[5] = '\0';
+    }
+    set_text(label, hhmm);
+}
+
+static bool parse_iso_local_time(const char* text, struct tm* out) {
+    if (!text || !out) return false;
+    int y = 0, mon = 0, d = 0, h = 0, m = 0, s = 0;
+    if (sscanf(text, "%d-%d-%dT%d:%d:%d", &y, &mon, &d, &h, &m, &s) < 5) return false;
+    memset(out, 0, sizeof(*out));
+    out->tm_year = y - 1900;
+    out->tm_mon = mon - 1;
+    out->tm_mday = d;
+    out->tm_hour = h;
+    out->tm_min = m;
+    out->tm_sec = s;
+    out->tm_isdst = -1;
+    return true;
+}
+
+static void format_expire_time_short(char* out, size_t cap, const char* iso_text) {
+    if (!out || cap == 0) return;
+    out[0] = '\0';
+    struct tm tm_exp = {};
+    if (!parse_iso_local_time(iso_text, &tm_exp)) {
+        snprintf(out, cap, "--");
+        return;
+    }
+    snprintf(out, cap, "%02d:%02d", tm_exp.tm_hour, tm_exp.tm_min);
+}
+
+static void format_remaining_short(char* out, size_t cap, time_t now_epoch, const char* iso_text) {
+    if (!out || cap == 0) return;
+    out[0] = '\0';
+    struct tm tm_exp = {};
+    if (!parse_iso_local_time(iso_text, &tm_exp)) {
+        snprintf(out, cap, "--");
+        return;
+    }
+    time_t exp_epoch = mktime(&tm_exp);
+    if (exp_epoch <= 0 || now_epoch <= 0) {
+        snprintf(out, cap, "%02d:%02d", tm_exp.tm_hour, tm_exp.tm_min);
+        return;
+    }
+    long diff = (long)(exp_epoch - now_epoch);
+    if (diff <= 0) {
+        snprintf(out, cap, "0m");
+        return;
+    }
+    long hours = diff / 3600;
+    long mins = (diff % 3600) / 60;
+    if (hours > 0) snprintf(out, cap, "%ldh%02ldm", hours, mins);
+    else snprintf(out, cap, "%ldm", mins > 0 ? mins : 1);
+}
+
+static uint32_t bar_color(int pct) {
+    if (pct > 85) return C_ALERT;
+    if (pct > 50) return C_SAND;
+    return C_BRAND;
+}
+
+static void set_bar(lv_obj_t* fill, int pct, int max_w) {
+    if (!fill) return;
+    if (pct < 0) pct = 0;
+    if (pct > 100) pct = 100;
+    const int w = (max_w * pct) / 100;
+    if (lv_obj_get_width(fill) != w) lv_obj_set_width(fill, w);
+    lv_obj_set_style_bg_color(fill, lv_color_hex(bar_color(pct)), 0);
+}
+
+static lv_obj_t* make_row(lv_obj_t* parent, int h = 24, int gap = 6) {
+    lv_obj_t* row = lv_obj_create(parent);
+    plain(row);
+    lv_obj_set_width(row, 220);
+    lv_obj_set_height(row, h);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_gap(row, gap, 0);
+    return row;
+}
+
+static lv_obj_t* make_track(lv_obj_t* parent, int w, int h, lv_obj_t** fill_out) {
+    lv_obj_t* track = lv_obj_create(parent);
+    lv_obj_remove_style_all(track);
+    lv_obj_set_size(track, w, h);
+    lv_obj_add_style(track, &sty_bar_track, 0);
+    lv_obj_clear_flag(track, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* fill = lv_obj_create(track);
+    lv_obj_remove_style_all(fill);
+    lv_obj_set_pos(fill, 0, 0);
+    lv_obj_set_size(fill, 0, h);
+    lv_obj_set_style_bg_opa(fill, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(fill, lv_color_hex(C_BRAND), 0);
+    lv_obj_set_style_border_width(fill, 0, 0);
+    lv_obj_set_style_radius(fill, 2, 0);
+    if (fill_out) *fill_out = fill;
+    return track;
+}
+
+static lv_obj_t* make_segment_track(lv_obj_t* parent,
+                                    int w,
+                                    int h,
+                                    int segments,
+                                    int gap,
+                                    lv_obj_t** fills_out) {
+    lv_obj_t* row = lv_obj_create(parent);
+    plain(row);
+    lv_obj_set_size(row, w, h);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_gap(row, gap, 0);
+
+    const int seg_w = (w - gap * (segments - 1)) / segments;
+    for (int i = 0; i < segments; ++i) {
+        lv_obj_t* track = lv_obj_create(row);
+        lv_obj_remove_style_all(track);
+        lv_obj_set_size(track, seg_w, h);
+        lv_obj_add_style(track, &sty_bar_track, 0);
+        lv_obj_clear_flag(track, LV_OBJ_FLAG_SCROLLABLE);
+
+        lv_obj_t* fill = lv_obj_create(track);
+        lv_obj_remove_style_all(fill);
+        lv_obj_set_pos(fill, 0, 0);
+        lv_obj_set_size(fill, 0, h);
+        lv_obj_set_style_bg_opa(fill, LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_color(fill, lv_color_hex(C_BRAND), 0);
+        lv_obj_set_style_border_width(fill, 0, 0);
+        lv_obj_set_style_radius(fill, 2, 0);
+        if (fills_out) fills_out[i] = fill;
+    }
+    return row;
+}
+
+static void set_segmented_bar(lv_obj_t** fills, int count, int pct, uint32_t color) {
+    if (!fills) return;
+    if (pct < 0) pct = 0;
+    if (pct > 100) pct = 100;
+    const int step = 100 / count;
+    for (int i = 0; i < count; ++i) {
+        lv_obj_t* fill = fills[i];
+        if (!fill) continue;
+        lv_obj_t* track = lv_obj_get_parent(fill);
+        const int max_w = lv_obj_get_width(track);
+        int local = pct - i * step;
+        if (local < 0) local = 0;
+        if (local > step) local = step;
+        const int w = (max_w * local) / step;
+        if (lv_obj_get_width(fill) != w) lv_obj_set_width(fill, w);
+        lv_obj_set_style_bg_color(fill, lv_color_hex(color), 0);
+    }
+}
+
+static PageObjects& page_objects(UIPage page) {
+    return s_pages[(int)page];
+}
+
+static lv_obj_t* make_page_root(UIPage page) {
+    PageObjects& po = page_objects(page);
+    if (po.root) return po.root;
+
+    po.root = lv_obj_create(s_scr);
+    plain(po.root);
+    lv_obj_set_size(po.root, SCREEN_W, CONTENT_H);
+    lv_obj_set_pos(po.root, 0, CONTENT_Y);
+    lv_obj_set_flex_flow(po.root, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(po.root, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_left(po.root, 10, 0);
+    lv_obj_set_style_pad_right(po.root, 10, 0);
+    lv_obj_set_style_pad_top(po.root, 4, 0);
+    lv_obj_set_style_pad_gap(po.root, 6, 0);
+    lv_obj_add_flag(po.root, LV_OBJ_FLAG_HIDDEN);
+    return po.root;
+}
+
+static void chrome_build() {
+    if (s_chrome.header) return;
+
+    s_chrome.header = lv_obj_create(s_scr);
+    plain(s_chrome.header);
+    lv_obj_set_size(s_chrome.header, SCREEN_W, HEADER_H);
+    lv_obj_set_pos(s_chrome.header, 0, 0);
+    lv_obj_set_flex_flow(s_chrome.header, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(s_chrome.header, LV_FLEX_ALIGN_SPACE_BETWEEN,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_hor(s_chrome.header, 8, 0);
+
+    s_chrome.title = make_label(s_chrome.header, &sty_ascii14, "DeskNest");
+    s_chrome.page = make_label(s_chrome.header, &sty_symbol14, "");
+
+    s_chrome.divider = lv_obj_create(s_scr);
+    lv_obj_set_size(s_chrome.divider, SCREEN_W - 10, 1);
+    lv_obj_set_pos(s_chrome.divider, 5, HEADER_H - 2);
+    lv_obj_add_style(s_chrome.divider, &sty_divider, 0);
+
+    s_chrome.home = lv_obj_create(s_scr);
+    plain(s_chrome.home);
+    lv_obj_set_size(s_chrome.home, SCREEN_W, HOME_H);
+    lv_obj_set_pos(s_chrome.home, 0, HOME_Y);
+    lv_obj_set_flex_flow(s_chrome.home, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(s_chrome.home, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_gap(s_chrome.home, 10, 0);
+
+    const char* icons[5] = {
+        LV_SYMBOL_HOME,
+        LV_SYMBOL_LIST,
+        LV_SYMBOL_SHUFFLE,
+        LV_SYMBOL_TINT,
+        LV_SYMBOL_SETTINGS,
+    };
+    for (int i = 0; i < 5; ++i) {
+        s_chrome.pills[i] = make_label(s_chrome.home, &sty_symbol14, icons[i]);
+        lv_obj_set_width(s_chrome.pills[i], 22);
+        lv_obj_set_style_text_align(s_chrome.pills[i], LV_TEXT_ALIGN_CENTER, 0);
+    }
+}
+
+static void chrome_update(const UiModel& m) {
+    const bool special = m.view.page == PAGE_SLEEP_FACE_DOWN || m.view.page == PAGE_CONFIG_PORTAL;
+    if (special) {
+        lv_obj_add_flag(s_chrome.header, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(s_chrome.divider, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(s_chrome.home, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+
+    lv_obj_clear_flag(s_chrome.header, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(s_chrome.divider, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(s_chrome.home, LV_OBJ_FLAG_HIDDEN);
+
+    char title_buf[32] = "DeskNest";
+    if (m.view.page == PAGE_PORTRAIT_AI_USAGE) {
+        if (m.aiUsage.nextRefreshInSec > 0) {
+            const unsigned sec = (unsigned)m.aiUsage.nextRefreshInSec;
+            if (sec < 60) snprintf(title_buf, sizeof(title_buf), "DeskNest / %us", sec);
+            else snprintf(title_buf, sizeof(title_buf), "DeskNest / %um%02us", sec / 60, sec % 60);
+        } else {
+            snprintf(title_buf, sizeof(title_buf), "DeskNest / --");
+        }
+    }
+    set_text(s_chrome.title, title_buf);
+
+    char wifi_buf[24];
+    const char* wifi_icon = LV_SYMBOL_WIFI;
+    switch (m.status.wifiState) {
+        case UI_WIFI_CONNECTED:
+            snprintf(wifi_buf, sizeof(wifi_buf), "%s OK", wifi_icon);
+            lv_obj_set_style_text_color(s_chrome.page, lv_color_hex(C_BRAND), 0);
+            break;
+        case UI_WIFI_CONNECTING:
+            snprintf(wifi_buf, sizeof(wifi_buf), "%s ...", wifi_icon);
+            lv_obj_set_style_text_color(s_chrome.page, lv_color_hex(C_SAND), 0);
+            break;
+        case UI_WIFI_NO_SSID:
+            snprintf(wifi_buf, sizeof(wifi_buf), "%s AP?", wifi_icon);
+            lv_obj_set_style_text_color(s_chrome.page, lv_color_hex(C_ALERT), 0);
+            break;
+        case UI_WIFI_AUTH_FAILED:
+            snprintf(wifi_buf, sizeof(wifi_buf), "%s Key", wifi_icon);
+            lv_obj_set_style_text_color(s_chrome.page, lv_color_hex(C_ALERT), 0);
+            break;
+        case UI_WIFI_DISCONNECTED:
+            snprintf(wifi_buf, sizeof(wifi_buf), "%s --", wifi_icon);
+            lv_obj_set_style_text_color(s_chrome.page, lv_color_hex(C_DIM), 0);
+            break;
+        case UI_WIFI_UNCONFIGURED:
+        default:
+            snprintf(wifi_buf, sizeof(wifi_buf), "%s cfg", wifi_icon);
+            lv_obj_set_style_text_color(s_chrome.page, lv_color_hex(C_DIM), 0);
+            break;
+    }
+    set_text(s_chrome.page, wifi_buf);
+
+    int active = dn_page_index_in_group(m.view.page);
+    int count = dn_page_count_in_group(m.view.page);
+    if (count > 5) count = 5;
+
+    for (int i = 0; i < 5; ++i) {
+        if (i >= count) {
+            lv_obj_add_flag(s_chrome.pills[i], LV_OBJ_FLAG_HIDDEN);
+            continue;
+        }
+        lv_obj_clear_flag(s_chrome.pills[i], LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_style_text_color(s_chrome.pills[i],
+                                    lv_color_hex(active == i ? C_BRAND : C_DIM),
+                                    0);
+    }
+}
+
+static void build_overview() {
+    PageObjects& po = page_objects(PAGE_PORTRAIT_OVERVIEW);
+    if (po.built) return;
+    lv_obj_t* root = make_page_root(PAGE_PORTRAIT_OVERVIEW);
+
+    lv_obj_t* top = make_row(root, 20, 8);
+    po.labels[0] = make_label(top, &sty_dim16);
+    lv_obj_set_flex_grow(po.labels[0], 1);
+
+    lv_obj_t* hero = make_row(root, 30, 7);
+    lv_obj_t* accent = lv_obj_create(hero);
+    lv_obj_remove_style_all(accent);
+    lv_obj_set_size(accent, 4, 25);
+    lv_obj_set_style_bg_color(accent, lv_color_hex(C_BRAND), 0);
+    lv_obj_set_style_bg_opa(accent, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(accent, 1, 0);
+    po.labels[1] = make_label(hero, &sty_text24);
+    po.labels[2] = make_label(hero, &sty_label16, "C");
+
+    lv_obj_t* stats = make_row(root, 20, 13);
+    for (int i = 0; i < 3; ++i) po.labels[3 + i] = make_label(stats, &sty_text16, "--");
+
+    lv_obj_t* card = lv_obj_create(root);
+    lv_obj_set_size(card, 220, 54);
+    lv_obj_add_style(card, &sty_card, 0);
+    lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(card, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_gap(card, 5, 0);
+    make_label(card, &sty_label16, "AI Left");
+    make_track(card, 200, 8, &po.bars[0]);
+    po.labels[6] = make_label(card, &sty_dim16);
+
+    lv_obj_t* nudge = lv_obj_create(root);
+    lv_obj_set_size(nudge, 220, 28);
+    lv_obj_add_style(nudge, &sty_card, 0);
+    lv_obj_set_style_border_side(nudge, LV_BORDER_SIDE_LEFT, 0);
+    lv_obj_set_style_border_width(nudge, 3, 0);
+    lv_obj_set_style_border_color(nudge, lv_color_hex(C_BRAND), 0);
+    po.labels[7] = make_label(nudge, &sty_text16);
+
+    po.built = true;
+}
+
+static void update_overview(const UiModel& m) {
+    PageObjects& po = page_objects(PAGE_PORTRAIT_OVERVIEW);
+    char buf[48];
+
+    snprintf(buf, sizeof(buf), "%s | %s",
+             m.overview.timeText[0] ? m.overview.timeText : "--:--",
+             m.overview.suggestionText[0] ? m.overview.suggestionText : "Ready");
+    set_text(po.labels[0], buf);
+
+    snprintf(buf, sizeof(buf), m.overview.environmentValid ? "%.1f" : "--",
+             m.overview.temperatureC);
+    set_text(po.labels[1], buf);
+
+    snprintf(buf, sizeof(buf), m.overview.environmentValid ? "Hum %.0f%%" : "Hum --",
+             m.overview.humidityPct);
+    set_text(po.labels[3], buf);
+
+    snprintf(buf, sizeof(buf), "Lux %u", (unsigned)m.overview.lux);
+    set_text(po.labels[4], buf);
+
+    if (m.status.batteryValid) snprintf(buf, sizeof(buf), "Bat %u%%", (unsigned)m.status.batteryPercent);
+    else snprintf(buf, sizeof(buf), "Bat USB");
+    set_text(po.labels[5], buf);
+
+    set_bar(po.bars[0], m.overview.aiTotalPercent, 200);
+
+    snprintf(buf, sizeof(buf), "%u%% | %s",
+             (unsigned)m.overview.aiTotalPercent,
+             m.aiUsage.updatedAtText[0] ? m.aiUsage.updatedAtText : "cached");
+    set_text(po.labels[6], buf);
+
+    snprintf(buf, sizeof(buf), "%s >", m.overview.messageText[0] ? m.overview.messageText : "Focus ready");
+    set_text(po.labels[7], buf);
+}
+
+static void build_ai_usage() {
+    PageObjects& po = page_objects(PAGE_PORTRAIT_AI_USAGE);
+    if (po.built) return;
+    lv_obj_t* root = make_page_root(PAGE_PORTRAIT_AI_USAGE);
+    lv_obj_set_style_pad_gap(root, 8, 0);
+
+    lv_obj_t* top = make_row(root, 46, 4);
+    po.labels[0] = make_label(top, &sty_time32, "--:--");
+    lv_obj_set_width(po.labels[0], 74);
+    lv_obj_set_style_text_align(po.labels[0], LV_TEXT_ALIGN_LEFT, 0);
+
+    lv_obj_t* providers = lv_obj_create(top);
+    plain(providers);
+    lv_obj_set_size(providers, 142, 46);
+    lv_obj_set_flex_flow(providers, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(providers, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_gap(providers, 6, 0);
+
+    lv_obj_t* gpt = lv_obj_create(providers);
+    plain(gpt);
+    lv_obj_set_size(gpt, 142, 20);
+    lv_obj_set_flex_flow(gpt, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(gpt, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_gap(gpt, 4, 0);
+    po.objs[0] = lv_img_create(gpt);
+    lv_img_set_src(po.objs[0], &dn_img_codex_16);
+    lv_obj_set_size(po.objs[0], 16, 16);
+    lv_obj_set_style_img_recolor(po.objs[0], lv_color_hex(C_GPT), 0);
+    lv_obj_set_style_img_recolor_opa(po.objs[0], LV_OPA_COVER, 0);
+    make_segment_track(gpt, 84, 12, 4, 2, &po.bars[0]);
+    po.labels[4] = make_label(gpt, &sty_ascii14, "0%");
+    lv_obj_set_width(po.labels[4], 34);
+    lv_obj_set_style_text_align(po.labels[4], LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_set_style_text_color(po.labels[4], lv_color_hex(C_GPT), 0);
+
+    lv_obj_t* minimax = lv_obj_create(providers);
+    plain(minimax);
+    lv_obj_set_size(minimax, 142, 20);
+    lv_obj_set_flex_flow(minimax, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(minimax, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_gap(minimax, 4, 0);
+    po.objs[1] = lv_img_create(minimax);
+    lv_img_set_src(po.objs[1], &dn_img_minimax_16);
+    lv_obj_set_size(po.objs[1], 16, 16);
+    lv_obj_set_style_img_recolor(po.objs[1], lv_color_hex(C_MINIMAX), 0);
+    lv_obj_set_style_img_recolor_opa(po.objs[1], LV_OPA_COVER, 0);
+    make_segment_track(minimax, 84, 12, 4, 2, &po.bars[4]);
+    po.labels[5] = make_label(minimax, &sty_ascii14, "0%");
+    lv_obj_set_width(po.labels[5], 34);
+    lv_obj_set_style_text_align(po.labels[5], LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_set_style_text_color(po.labels[5], lv_color_hex(C_MINIMAX), 0);
+
+    for (int i = 0; i < 4; ++i) {
+        lv_obj_t* row = make_row(root, 20, 8);
+        po.labels[6 + i * 2] = make_label(row, &sty_text16);
+        lv_obj_set_flex_grow(po.labels[6 + i * 2], 1);
+        po.labels[7 + i * 2] = make_label(row, &sty_ascii14);
+        lv_obj_set_style_text_color(po.labels[7 + i * 2], lv_color_hex(C_BRAND), 0);
+        lv_obj_set_width(po.labels[7 + i * 2], 50);
+        lv_obj_set_style_text_align(po.labels[7 + i * 2], LV_TEXT_ALIGN_RIGHT, 0);
+        make_track(root, 220, 8, &po.bars[8 + i]);
+    }
+
+    lv_obj_t* codex = lv_obj_create(root);
+    lv_obj_set_size(codex, 220, 30);
+    lv_obj_add_style(codex, &sty_card, 0);
+    lv_obj_set_style_radius(codex, 14, 0);
+    po.objs[2] = codex;
+    po.labels[14] = make_label(codex, &sty_ascii14, "");
+    lv_obj_set_width(po.labels[14], 204);
+
+    po.built = true;
+}
+
+static void update_ai_usage(const UiModel& m) {
+    PageObjects& po = page_objects(PAGE_PORTRAIT_AI_USAGE);
+    char buf[48];
+    char codex_buf[160];
+    const time_t now_epoch = dn_ai_usage_now_epoch();
+    const uint8_t chatgpt_left = (uint8_t)(m.aiUsage.chatgpt.percent >= 100 ? 0 : 100 - m.aiUsage.chatgpt.percent);
+    const uint8_t minimax_left = (uint8_t)(m.aiUsage.minimax.percent >= 100 ? 0 : 100 - m.aiUsage.minimax.percent);
+
+    set_hhmm_text(po.labels[0], m.overview.timeText);
+
+    snprintf(buf, sizeof(buf), "%u%%", (unsigned)chatgpt_left);
+    set_text(po.labels[4], buf);
+    set_segmented_bar(&po.bars[0], 4, chatgpt_left, C_GPT);
+
+    snprintf(buf, sizeof(buf), "%u%%", (unsigned)minimax_left);
+    set_text(po.labels[5], buf);
+    set_segmented_bar(&po.bars[4], 4, minimax_left, C_MINIMAX);
+
+    struct UsageWindowRow {
+        const char* name;
+        uint8_t percent;
+        uint32_t color;
+    };
+    const UsageWindowRow rows[4] = {
+        {"ChatGPT 5h", m.aiUsage.chatgpt.percent, C_GPT},
+        {"ChatGPT Week", m.aiUsage.chatgpt.weeklyPercent, C_GPT},
+        {"MiniMax 5h", m.aiUsage.minimax.percent, C_MINIMAX},
+        {"MiniMax Week", m.aiUsage.minimax.weeklyPercent, C_MINIMAX},
+    };
+    const char* expire_ats[4] = {
+        m.aiUsage.chatgpt.fiveHourExpireAt,
+        m.aiUsage.chatgpt.weekExpireAt,
+        m.aiUsage.minimax.fiveHourExpireAt,
+        m.aiUsage.minimax.weekExpireAt,
+    };
+    for (int i = 0; i < 4; ++i) {
+        set_text(po.labels[6 + i * 2], rows[i].name);
+        format_expire_time_short(buf, sizeof(buf), expire_ats[i]);
+        set_text(po.labels[7 + i * 2], buf);
+        lv_obj_set_style_text_color(po.labels[7 + i * 2], lv_color_hex(rows[i].color), 0);
+        set_bar(po.bars[8 + i], rows[i].percent, 220);
+        lv_obj_set_style_bg_color(po.bars[8 + i], lv_color_hex(rows[i].color), 0);
+    }
+
+    codex_buf[0] = '\0';
+    for (uint8_t i = 0; i < m.aiUsage.codexResetCount && i < 4; ++i) {
+        char remain[24];
+        char expire[16];
+        format_remaining_short(remain, sizeof(remain), now_epoch, m.aiUsage.codexResets[i].expireAt);
+        format_expire_time_short(expire, sizeof(expire), m.aiUsage.codexResets[i].expireAt);
+        char item[48];
+        snprintf(item, sizeof(item), "%s %s %s",
+                 m.aiUsage.codexResets[i].name[0] ? m.aiUsage.codexResets[i].name : "Codex",
+                 remain, expire);
+        if (codex_buf[0]) strncat(codex_buf, "  ", sizeof(codex_buf) - strlen(codex_buf) - 1);
+        strncat(codex_buf, item, sizeof(codex_buf) - strlen(codex_buf) - 1);
+    }
+    set_text(po.labels[14], codex_buf[0] ? codex_buf : "");
+    if (po.objs[2]) {
+        if (codex_buf[0]) lv_obj_clear_flag(po.objs[2], LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_add_flag(po.objs[2], LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+static void build_menu() {
+    PageObjects& po = page_objects(PAGE_PORTRAIT_MENU);
+    if (po.built) return;
+    lv_obj_t* root = make_page_root(PAGE_PORTRAIT_MENU);
+    lv_obj_set_style_pad_gap(root, 4, 0);
+
+    po.labels[0] = make_label(root, &sty_text16);
+    po.labels[1] = make_label(root, &sty_dim16);
+
+    lv_obj_t* div = lv_obj_create(root);
+    lv_obj_set_size(div, 220, 1);
+    lv_obj_add_style(div, &sty_divider, 0);
+
+    for (int i = 0; i < 6; ++i) {
+        lv_obj_t* row = make_row(root, 24, 6);
+        po.rows[i] = row;
+        po.labels[2 + i * 2] = make_label(row, &sty_text16);
+        lv_obj_set_flex_grow(po.labels[2 + i * 2], 1);
+        po.labels[3 + i * 2] = make_label(row, &sty_brand16);
+    }
+
+    po.labels[14] = make_label(root, &sty_dim16);
+    po.built = true;
+}
+
+static void update_menu(const UiModel& m) {
+    PageObjects& po = page_objects(PAGE_PORTRAIT_MENU);
+    set_text(po.labels[0], m.menu.ask);
+    set_text(po.labels[1], m.menu.lastMeal);
+
+    int row = 0;
+    for (uint8_t g = 0; g < m.menu.groupCount && g < 4 && row < 6; ++g) {
+        const UiMenuGroupProps& grp = m.menu.groups[g];
+        for (uint8_t c = 0; c < grp.candidateCount && c < 6 && row < 6; ++c) {
+            const UiMenuCandidateProps& item = grp.candidates[c];
+            char left[56];
+            snprintf(left, sizeof(left), "%s %s", item.active ? ">" : " ", item.name);
+            set_text(po.labels[2 + row * 2], left);
+
+            char right[24];
+            snprintf(right, sizeof(right), "%s %u.%u", item.price, item.score / 10, item.score % 10);
+            set_text(po.labels[3 + row * 2], right);
+
+            lv_obj_clear_flag(po.rows[row], LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_style_bg_opa(po.rows[row], item.active ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+            lv_obj_set_style_bg_color(po.rows[row], lv_color_hex(C_CARD_HI), 0);
+            ++row;
+        }
+    }
+
+    while (row < 6) {
+        lv_obj_add_flag(po.rows[row], LV_OBJ_FLAG_HIDDEN);
+        ++row;
+    }
+
+    set_text(po.labels[14], m.menu.diceHint);
+}
+
+static void build_environment() {
+    PageObjects& po = page_objects(PAGE_PORTRAIT_ENVIRONMENT);
+    if (po.built) return;
+    lv_obj_t* root = make_page_root(PAGE_PORTRAIT_ENVIRONMENT);
+
+    lv_obj_t* score = make_row(root, 34, 8);
+    make_label(score, &sty_ascii14, "Comfort");
+    po.labels[0] = make_label(score, &sty_brand24);
+    po.labels[1] = make_label(score, &sty_dim16);
+
+    make_track(root, 220, 12, &po.bars[0]);
+
+    for (int i = 0; i < 3; ++i) {
+        lv_obj_t* row = make_row(root, 30, 8);
+        po.labels[2 + i * 2] = make_label(row, &sty_ascii14);
+        lv_obj_set_width(po.labels[2 + i * 2], 52);
+        po.labels[3 + i * 2] = make_label(row, &sty_text16);
+    }
+
+    lv_obj_t* advice = lv_obj_create(root);
+    lv_obj_set_size(advice, 220, 40);
+    lv_obj_add_style(advice, &sty_card, 0);
+    po.labels[8] = make_label(advice, &sty_text16);
+
+    po.built = true;
+}
+
+static void update_environment(const UiModel& m) {
+    PageObjects& po = page_objects(PAGE_PORTRAIT_ENVIRONMENT);
+    char buf[48];
+
+    snprintf(buf, sizeof(buf), "%u", (unsigned)m.environment.score);
+    set_text(po.labels[0], buf);
+    set_text(po.labels[1], m.environment.gradeText);
+    set_bar(po.bars[0], m.environment.score, 220);
+
+    set_text(po.labels[2], "Temp");
+    if (m.environment.valid) {
+        snprintf(buf, sizeof(buf), "%.1f C | %s",
+                 m.environment.temperatureC, m.environment.temperatureGrade);
+    } else {
+        snprintf(buf, sizeof(buf), "-- | %s", m.environment.temperatureGrade);
+    }
+    set_text(po.labels[3], buf);
+
+    set_text(po.labels[4], "Hum");
+    if (m.environment.valid) {
+        snprintf(buf, sizeof(buf), "%.0f%% | %s",
+                 m.environment.humidityPct, m.environment.humidityGrade);
+    } else {
+        snprintf(buf, sizeof(buf), "-- | %s", m.environment.humidityGrade);
+    }
+    set_text(po.labels[5], buf);
+
+    set_text(po.labels[6], "Light");
+    snprintf(buf, sizeof(buf), "%u lx | %s", (unsigned)m.environment.lux, m.environment.lightGrade);
+    set_text(po.labels[7], buf);
+
+    set_text(po.labels[8], m.environment.adviceText);
+}
+
+static void build_settings() {
+    PageObjects& po = page_objects(PAGE_PORTRAIT_SETTINGS);
+    if (po.built) return;
+    lv_obj_t* root = make_page_root(PAGE_PORTRAIT_SETTINGS);
+    po.labels[0] = make_label(root, &sty_ascii14, "Settings");
+
+    for (int i = 0; i < 6; ++i) {
+        lv_obj_t* row = make_row(root, 26, 5);
+        po.rows[i] = row;
+        po.labels[1 + i * 2] = make_label(row, &sty_ascii14);
+        lv_obj_set_flex_grow(po.labels[1 + i * 2], 1);
+        po.labels[2 + i * 2] = make_label(row, &sty_ascii14);
+    }
+
+    lv_obj_t* danger = lv_obj_create(root);
+    lv_obj_set_size(danger, 220, 28);
+    lv_obj_add_style(danger, &sty_danger, 0);
+    po.labels[13] = make_label(danger, &sty_ascii14);
+
+    po.built = true;
+}
+
+static void update_settings(const UiModel& m) {
+    PageObjects& po = page_objects(PAGE_PORTRAIT_SETTINGS);
+    uint8_t n = m.settings.rowCount;
+    if (n > 6) n = 6;
+
+    for (int i = 0; i < 6; ++i) {
+        if (i >= n) {
+            lv_obj_add_flag(po.rows[i], LV_OBJ_FLAG_HIDDEN);
+            continue;
+        }
+        lv_obj_clear_flag(po.rows[i], LV_OBJ_FLAG_HIDDEN);
+        set_text(po.labels[1 + i * 2], m.settings.rows[i].label);
+        set_text(po.labels[2 + i * 2], m.settings.rows[i].value);
+        lv_obj_set_style_bg_opa(po.rows[i], i == m.settings.selectedIndex ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+        lv_obj_set_style_bg_color(po.rows[i], lv_color_hex(C_CARD_HI), 0);
+    }
+    set_text(po.labels[13], m.settings.dangerHint[0] ? m.settings.dangerHint : "[A+B] Factory Reset");
+}
+
+static void build_face_down() {
+    PageObjects& po = page_objects(PAGE_SLEEP_FACE_DOWN);
+    if (po.built) return;
+    lv_obj_t* root = make_page_root(PAGE_SLEEP_FACE_DOWN);
+    lv_obj_set_pos(root, 0, 0);
+    lv_obj_set_size(root, SCREEN_W, SCREEN_H);
+    lv_obj_set_style_pad_top(root, 96, 0);
+    lv_obj_set_flex_align(root, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    po.labels[0] = make_label(root, &sty_brand24);
+    po.labels[1] = make_label(root, &sty_dim16);
+    po.labels[2] = make_label(root, &sty_label16);
+    po.built = true;
+}
+
+static void update_face_down(const UiModel& m) {
+    PageObjects& po = page_objects(PAGE_SLEEP_FACE_DOWN);
+    set_text(po.labels[0], m.faceDown.line1);
+    set_text(po.labels[1], m.faceDown.line2);
+    set_text(po.labels[2], m.faceDown.line3);
+}
+
+static void build_config() {
+    PageObjects& po = page_objects(PAGE_CONFIG_PORTAL);
+    if (po.built) return;
+    lv_obj_t* root = make_page_root(PAGE_CONFIG_PORTAL);
+    lv_obj_set_style_pad_top(root, 42, 0);
+    po.labels[0] = make_label(root, &sty_ascii14, "WiFi Setup");
+    lv_obj_set_style_text_color(po.labels[0], lv_color_hex(C_BRAND), 0);
+    po.labels[1] = make_label(root, &sty_ascii14);
+    po.labels[2] = make_label(root, &sty_ascii14);
+    po.labels[3] = make_label(root, &sty_ascii14);
+    lv_obj_set_style_text_color(po.labels[3], lv_color_hex(C_DIM), 0);
+    po.labels[4] = make_label(root, &sty_ascii14);
+    lv_obj_set_style_text_color(po.labels[4], lv_color_hex(C_LABEL), 0);
+    po.built = true;
+}
+
+static void update_config(const UiModel& m) {
+    PageObjects& po = page_objects(PAGE_CONFIG_PORTAL);
+    char buf[48];
+    snprintf(buf, sizeof(buf), "SSID %s", m.config.ssidText);
+    set_text(po.labels[1], buf);
+    snprintf(buf, sizeof(buf), "URL %s", m.config.urlText);
+    set_text(po.labels[2], buf);
+    set_text(po.labels[3], m.config.stepText);
+    set_text(po.labels[4], m.config.hintText);
+}
+
+static void build_page(UIPage page) {
+    switch (page) {
+        case PAGE_PORTRAIT_OVERVIEW:    build_overview(); break;
+        case PAGE_PORTRAIT_AI_USAGE:    build_ai_usage(); break;
+        case PAGE_PORTRAIT_MENU:        build_menu(); break;
+        case PAGE_PORTRAIT_ENVIRONMENT: build_environment(); break;
+        case PAGE_PORTRAIT_SETTINGS:    build_settings(); break;
+        case PAGE_SLEEP_FACE_DOWN:      build_face_down(); break;
+        case PAGE_CONFIG_PORTAL:        build_config(); break;
+        case PAGE_LANDSCAPE_OVERVIEW:
+        case PAGE_LANDSCAPE_FOCUS:
+        case PAGE_LANDSCAPE_CUSTOM:
+        default:
+            build_overview();
+            break;
+    }
+}
+
+static UIPage normalized_page(UIPage page) {
+    switch (page) {
+        case PAGE_PORTRAIT_OVERVIEW:
+        case PAGE_PORTRAIT_AI_USAGE:
+        case PAGE_PORTRAIT_MENU:
+        case PAGE_PORTRAIT_ENVIRONMENT:
+        case PAGE_PORTRAIT_SETTINGS:
+        case PAGE_SLEEP_FACE_DOWN:
+        case PAGE_CONFIG_PORTAL:
+            return page;
+        default:
+            return PAGE_PORTRAIT_OVERVIEW;
+    }
+}
+
+static void show_page(UIPage raw_page) {
+    UIPage page = normalized_page(raw_page);
+    build_page(page);
+
+    if (s_visible_page != PAGE_COUNT && s_visible_page != page) {
+        lv_obj_add_flag(page_objects(s_visible_page).root, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    lv_obj_clear_flag(page_objects(page).root, LV_OBJ_FLAG_HIDDEN);
+    s_visible_page = page;
+}
+
+static void update_page(const UiModel& m) {
+    switch (normalized_page(m.view.page)) {
+        case PAGE_PORTRAIT_OVERVIEW:    update_overview(m); break;
+        case PAGE_PORTRAIT_AI_USAGE:    update_ai_usage(m); break;
+        case PAGE_PORTRAIT_MENU:        update_menu(m); break;
+        case PAGE_PORTRAIT_ENVIRONMENT: update_environment(m); break;
+        case PAGE_PORTRAIT_SETTINGS:    update_settings(m); break;
+        case PAGE_SLEEP_FACE_DOWN:      update_face_down(m); break;
+        case PAGE_CONFIG_PORTAL:        update_config(m); break;
+        default:                        update_overview(m); break;
+    }
+}
+
+} // namespace
+
+} // namespace desknest
+
+void dn_ui_setup() {
+    Serial.println("[D][UI] LVGL setup");
+
+    desknest::k10.initScreen(2);
+
+    desknest::LvglLock lock;
+    desknest::s_scr = lv_scr_act();
+    desknest::style_init_once();
+
+    lv_obj_set_style_bg_color(desknest::s_scr, lv_color_hex(desknest::C_BG), 0);
+    lv_obj_set_style_bg_opa(desknest::s_scr, LV_OPA_COVER, 0);
+
+    desknest::chrome_build();
+
+    desknest::s_model = desknest::dn_build_ui_model();
+    desknest::show_page(desknest::s_model.view.page);
+    desknest::chrome_update(desknest::s_model);
+    desknest::update_page(desknest::s_model);
+
+    lv_task_handler();
+    desknest::s_last_ui_update_ms = millis();
+    desknest::s_last_lvgl_pump_ms = desknest::s_last_ui_update_ms;
+    desknest::s_ready = true;
+    Serial.println("[D][UI] LVGL ready");
+}
+
+void dn_ui_render() {
+    if (!desknest::s_ready) return;
+
+    desknest::s_model = desknest::dn_build_ui_model();
+    const uint32_t now = millis();
+    const desknest::UIPage page = desknest::normalized_page(desknest::s_model.view.page);
+    const bool page_changed = (page != desknest::s_visible_page);
+    const bool update_due = (now - desknest::s_last_ui_update_ms) >= 200;
+    const bool pump_due = (now - desknest::s_last_lvgl_pump_ms) >= 20;
+
+    if (!page_changed && !update_due && !pump_due) return;
+
+    desknest::LvglLock lock;
+    if (page_changed || update_due) {
+        desknest::show_page(page);
+        desknest::chrome_update(desknest::s_model);
+        desknest::update_page(desknest::s_model);
+        desknest::s_last_ui_update_ms = now;
+    }
+
+    lv_task_handler();
+    desknest::s_last_lvgl_pump_ms = now;
+}

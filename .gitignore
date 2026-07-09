@@ -7,9 +7,29 @@ __pycache__/
 *.pyc
 
 # Machine-local Claude permissions — keep out of VCS
-.claude/settings.local.json
+.claude/*
 
 # Development markdown — keep out of VCS
 # (README.md is the public project readme and stays tracked.)
 new.md
 docs/
+
+pc-simulator
+
+# TokenNest 本地端 AI 用量聚合服务（Node.js 子项目）
+# 见 TokenNest/README.md
+TokenNest/node_modules/
+TokenNest/cache/
+TokenNest/logs/
+TokenNest/tmp/
+# 真值配置文件不入库（example 入库）
+TokenNest/config/tokennest.yaml
+TokenNest/config/minimax.json
+TokenNest/.env
+
+# DeskNest 个人凭证配置（WiFi SSID/密码、TokenNest URL）
+# 复制 platformio.local.ini.example 为 platformio.local.ini 后填入
+# scripts/pio_local_config.py 会在首次 pio run 时自动 copy 并提示
+platformio.local.ini
+# pre-script 从 platformio.local.ini [secrets] 生成此目录
+include/generated/
