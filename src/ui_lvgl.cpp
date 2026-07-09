@@ -127,11 +127,13 @@ struct BootOverlayObjects {
     lv_obj_t* panel = nullptr;
     lv_obj_t* logo = nullptr;
     lv_obj_t* title = nullptr;
+    lv_obj_t* name = nullptr;
     lv_obj_t* subtitle = nullptr;
     lv_obj_t* tagline = nullptr;
-    lv_obj_t* bubbles = nullptr;
-    lv_obj_t* bubble_objs[5] = {};
-    lv_obj_t* bubble_labels[5] = {};
+    lv_obj_t* progress_track = nullptr;
+    lv_obj_t* progress_fill = nullptr;
+    lv_obj_t* progress_head = nullptr;
+    lv_obj_t* progress_label = nullptr;
 };
 
 static ChromeObjects s_chrome;
@@ -657,49 +659,58 @@ static void boot_overlay_build() {
 
     s_boot.panel = lv_obj_create(s_boot.root);
     plain(s_boot.panel);
-    lv_obj_set_size(s_boot.panel, 220, 188);
-    lv_obj_set_pos(s_boot.panel, 10, 58);
+    lv_obj_set_size(s_boot.panel, 220, 204);
+    lv_obj_set_pos(s_boot.panel, 10, 44);
 
     s_boot.logo = lv_img_create(s_boot.panel);
     lv_img_set_src(s_boot.logo, &dn_img_dfrobot_40);
-    lv_obj_set_pos(s_boot.logo, 8, 18);
+    lv_obj_set_pos(s_boot.logo, 12, 18);
     lv_obj_set_style_img_recolor(s_boot.logo, lv_color_hex(C_BOOT), 0);
     lv_obj_set_style_img_recolor_opa(s_boot.logo, LV_OPA_COVER, 0);
 
-    s_boot.title = make_label(s_boot.panel, &sty_text24, "栖屏 / DeskNest");
-    lv_obj_set_pos(s_boot.title, 64, 18);
-    lv_obj_set_width(s_boot.title, 146);
+    s_boot.title = make_label(s_boot.panel, &sty_text24, "栖屏");
+    lv_obj_set_pos(s_boot.title, 4, 70);
+    lv_obj_set_width(s_boot.title, 64);
+    lv_obj_set_style_text_align(s_boot.title, LV_TEXT_ALIGN_CENTER, 0);
 
-    s_boot.subtitle = make_label(s_boot.panel, &sty_brand16, "栖于桌面");
-    lv_obj_set_pos(s_boot.subtitle, 64, 54);
-    lv_obj_set_width(s_boot.subtitle, 120);
+    s_boot.name = make_label(s_boot.panel, &sty_text24, "DeskNest");
+    lv_obj_set_pos(s_boot.name, 84, 24);
+    lv_obj_set_width(s_boot.name, 128);
 
-    s_boot.tagline = make_label(s_boot.panel, &sty_label16, "息于常亮之间");
-    lv_obj_set_pos(s_boot.tagline, 64, 74);
-    lv_obj_set_width(s_boot.tagline, 120);
+    s_boot.subtitle = make_label(s_boot.panel, &sty_text16, "栖于桌面");
+    lv_obj_set_pos(s_boot.subtitle, 84, 62);
+    lv_obj_set_width(s_boot.subtitle, 128);
 
-    s_boot.bubbles = lv_obj_create(s_boot.root);
-    plain(s_boot.bubbles);
-    lv_obj_set_size(s_boot.bubbles, 220, 30);
-    lv_obj_set_pos(s_boot.bubbles, 10, 252);
-    lv_obj_set_flex_flow(s_boot.bubbles, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(s_boot.bubbles, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_gap(s_boot.bubbles, 3, 0);
+    s_boot.tagline = make_label(s_boot.panel, &sty_text16, "息于常亮之间");
+    lv_obj_set_pos(s_boot.tagline, 84, 86);
+    lv_obj_set_width(s_boot.tagline, 128);
+    lv_obj_set_style_text_color(s_boot.tagline, lv_color_hex(C_LABEL), 0);
 
-    const char* labels[5] = {"K10", "WiFi", "Time", "AI", "Ready"};
-    const int widths[5] = {30, 36, 38, 22, 44};
-    for (int i = 0; i < 5; ++i) {
-        lv_obj_t* bubble = lv_obj_create(s_boot.bubbles);
-        lv_obj_add_style(bubble, &sty_card, 0);
-        lv_obj_set_width(bubble, widths[i]);
-        lv_obj_set_height(bubble, 24);
-        lv_obj_set_style_radius(bubble, 12, 0);
-        lv_obj_set_style_pad_hor(bubble, 0, 0);
-        lv_obj_set_style_pad_ver(bubble, 4, 0);
-        s_boot.bubble_objs[i] = bubble;
-        s_boot.bubble_labels[i] = make_label(bubble, &sty_ascii14, labels[i]);
-        lv_obj_center(s_boot.bubble_labels[i]);
-    }
+    s_boot.progress_track = lv_obj_create(s_boot.root);
+    lv_obj_remove_style_all(s_boot.progress_track);
+    lv_obj_set_size(s_boot.progress_track, 196, 8);
+    lv_obj_set_pos(s_boot.progress_track, 22, 274);
+    lv_obj_add_style(s_boot.progress_track, &sty_bar_track, 0);
+
+    s_boot.progress_fill = lv_obj_create(s_boot.progress_track);
+    lv_obj_remove_style_all(s_boot.progress_fill);
+    lv_obj_set_pos(s_boot.progress_fill, 0, 0);
+    lv_obj_set_size(s_boot.progress_fill, 0, 8);
+    lv_obj_set_style_bg_opa(s_boot.progress_fill, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(s_boot.progress_fill, lv_color_hex(C_BOOT), 0);
+    lv_obj_set_style_border_width(s_boot.progress_fill, 0, 0);
+    lv_obj_set_style_radius(s_boot.progress_fill, 2, 0);
+
+    s_boot.progress_head = lv_obj_create(s_boot.root);
+    lv_obj_add_style(s_boot.progress_head, &sty_card, 0);
+    lv_obj_set_size(s_boot.progress_head, 38, 20);
+    lv_obj_set_style_radius(s_boot.progress_head, 10, 0);
+    lv_obj_set_style_bg_color(s_boot.progress_head, lv_color_hex(C_BOOT), 0);
+    lv_obj_set_pos(s_boot.progress_head, 10, 268);
+
+    s_boot.progress_label = make_label(s_boot.progress_head, &sty_ascii14, "K10");
+    lv_obj_center(s_boot.progress_label);
+    lv_obj_set_style_text_color(s_boot.progress_label, lv_color_hex(C_BG), 0);
 
     lv_obj_add_flag(s_boot.root, LV_OBJ_FLAG_HIDDEN);
 }
@@ -708,21 +719,13 @@ static void set_boot_overlay_opa(uint8_t opa) {
     lv_obj_set_style_bg_opa(s_boot.root, opa, 0);
     lv_obj_set_style_img_opa(s_boot.logo, opa, 0);
     lv_obj_set_style_text_opa(s_boot.title, opa, 0);
+    lv_obj_set_style_text_opa(s_boot.name, opa, 0);
     lv_obj_set_style_text_opa(s_boot.subtitle, opa, 0);
     lv_obj_set_style_text_opa(s_boot.tagline, opa, 0);
-    for (int i = 0; i < 5; ++i) {
-        if (s_boot.bubble_objs[i]) lv_obj_set_style_bg_opa(s_boot.bubble_objs[i], opa, 0);
-        if (s_boot.bubble_labels[i]) lv_obj_set_style_text_opa(s_boot.bubble_labels[i], opa, 0);
-    }
-}
-
-static void set_boot_bubble(int idx, const char* text, bool active, bool accent = false) {
-    if (idx < 0 || idx >= 5 || !s_boot.bubble_objs[idx] || !s_boot.bubble_labels[idx]) return;
-    set_text(s_boot.bubble_labels[idx], text);
-    lv_obj_set_style_bg_color(s_boot.bubble_objs[idx],
-                              lv_color_hex(active ? (accent ? C_BOOT : C_BRAND) : C_CARD), 0);
-    lv_obj_set_style_text_color(s_boot.bubble_labels[idx],
-                                lv_color_hex(active ? C_BG : C_LABEL), 0);
+    lv_obj_set_style_bg_opa(s_boot.progress_track, opa, 0);
+    lv_obj_set_style_bg_opa(s_boot.progress_fill, opa, 0);
+    lv_obj_set_style_bg_opa(s_boot.progress_head, opa, 0);
+    lv_obj_set_style_text_opa(s_boot.progress_label, opa, 0);
 }
 
 static void boot_overlay_update(const UiModel& m) {
@@ -736,12 +739,18 @@ static void boot_overlay_update(const UiModel& m) {
     lv_obj_clear_flag(s_boot.root, LV_OBJ_FLAG_HIDDEN);
     const uint8_t opa = (uint8_t)(255 - ((uint16_t)m.boot.fadePct * 255U) / 100U);
     set_boot_overlay_opa(opa);
-
-    set_boot_bubble(0, "K10", m.boot.k10Ready, true);
-    set_boot_bubble(1, "WiFi", m.boot.wifiReady);
-    set_boot_bubble(2, "Time", m.boot.timeReady);
-    set_boot_bubble(3, "AI", m.boot.aiReady);
-    set_boot_bubble(4, "Ready", m.boot.ready, true);
+    const int track_w = lv_obj_get_width(s_boot.progress_track);
+    const int head_w = lv_obj_get_width(s_boot.progress_head);
+    int pct = m.boot.progressPct;
+    if (pct < 0) pct = 0;
+    if (pct > 100) pct = 100;
+    lv_obj_set_width(s_boot.progress_fill, (track_w * pct) / 100);
+    const int min_x = 10;
+    const int max_x = 10 + track_w - head_w + 12;
+    int head_x = min_x + ((max_x - min_x) * pct) / 100;
+    if (head_x < min_x) head_x = min_x;
+    if (head_x > max_x) head_x = max_x;
+    lv_obj_set_pos(s_boot.progress_head, head_x, 268);
 }
 
 static void hide_all_pages() {

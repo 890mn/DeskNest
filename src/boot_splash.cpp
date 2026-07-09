@@ -4,6 +4,7 @@ namespace desknest {
 namespace {
 
 constexpr uint32_t kBootHoldMs = 3000;
+constexpr uint32_t kBootVisualMs = 4000;
 static uint32_t s_boot_fade_ms = 0;
 static uint32_t s_fade_started_at_ms = 0;
 static bool s_fade_started = false;
@@ -42,9 +43,11 @@ void dn_boot_splash_update(uint32_t now_ms,
     const uint32_t elapsed = now_ms >= s_started_at_ms ? (now_ms - s_started_at_ms) : 0;
     const bool all_ready = k10Ready && wifiReady && timeReady && aiReady;
     s_status.ready = all_ready;
+    s_status.progressPct = (uint8_t)((elapsed >= kBootVisualMs) ? 96 : ((elapsed * 96U) / kBootVisualMs));
 
     if (failed) {
         s_status.active = false;
+        s_status.progressPct = 100;
         s_status.fadePct = 100;
         return;
     }
@@ -62,6 +65,7 @@ void dn_boot_splash_update(uint32_t now_ms,
 
     if (s_boot_fade_ms == 0U) {
         s_status.active = false;
+        s_status.progressPct = 100;
         s_status.fadePct = 100;
         return;
     }
@@ -69,6 +73,7 @@ void dn_boot_splash_update(uint32_t now_ms,
     const uint32_t fade_elapsed = now_ms >= s_fade_started_at_ms ? (now_ms - s_fade_started_at_ms) : 0;
     if (fade_elapsed >= s_boot_fade_ms) {
         s_status.active = false;
+        s_status.progressPct = 100;
         s_status.fadePct = 100;
         return;
     }

@@ -21,6 +21,7 @@ struct BootSplashStatus {
     bool ready = false;
     bool failed = false;
     BootFailureReason failureReason = BOOT_FAIL_NONE;
+    uint8_t progressPct = 0;
     uint8_t fadePct = 0;
 };
 

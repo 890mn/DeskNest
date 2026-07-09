@@ -31,6 +31,16 @@ void test_boot_splash_waits_for_all_tasks_even_after_min_hold() {
     TEST_ASSERT_EQUAL_UINT8(0, status.fadePct);
 }
 
+void test_boot_splash_reports_visual_progress_before_ready() {
+    dn_boot_splash_begin(1000);
+    dn_boot_splash_update(5000, true, false, false, false);
+
+    const BootSplashStatus status = dn_boot_splash_status();
+    TEST_ASSERT_TRUE(status.active);
+    TEST_ASSERT_GREATER_THAN_UINT8(0, status.progressPct);
+    TEST_ASSERT_LESS_THAN_UINT8(100, status.progressPct);
+}
+
 void test_boot_splash_finishes_immediately_after_all_tasks_ready() {
     dn_boot_splash_begin(1000);
     dn_boot_splash_update(4000, true, true, true, true);
@@ -67,6 +77,7 @@ int main(int argc, char **argv) {
     UNITY_BEGIN();
     RUN_TEST(test_boot_splash_stays_visible_before_fade);
     RUN_TEST(test_boot_splash_waits_for_all_tasks_even_after_min_hold);
+    RUN_TEST(test_boot_splash_reports_visual_progress_before_ready);
     RUN_TEST(test_boot_splash_finishes_immediately_after_all_tasks_ready);
     RUN_TEST(test_boot_splash_finishes_after_total_window);
     RUN_TEST(test_boot_splash_hides_and_marks_failure);

@@ -123,6 +123,7 @@ UiModel dn_build_ui_model() {
     model.boot.ready = boot.ready;
     model.boot.failed = boot.failed;
     model.boot.failureReason = boot.failureReason;
+    model.boot.progressPct = boot.progressPct;
     model.boot.fadePct = boot.fadePct;
 
     switch (boot.failureReason) {
