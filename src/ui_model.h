@@ -141,6 +141,7 @@ struct UiAiUsageProps {
     uint8_t codexResetCount = 0;
     const char* updatedAtText = "";
     const char* warningText = "";
+    const char* serverNow = "";
     uint16_t nextRefreshInSec = 0;
 };
 
@@ -448,6 +449,7 @@ inline UiModel dn_build_ui_model_from_inputs(const UiModelInputs& in) {
     m.aiUsage.minimax = dn_usage_item(aiStatus.minimax);
     m.aiUsage.updatedAtText = aiStatus.updatedAtText;
     m.aiUsage.warningText = aiStatus.warningText;
+    m.aiUsage.serverNow = aiStatus.serverNow;
     m.aiUsage.nextRefreshInSec = aiStatus.nextRefreshInSec;
     m.overview.aiTotalPercent = aiStatus.totalPercent;
 

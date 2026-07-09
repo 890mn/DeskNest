@@ -68,6 +68,7 @@ UiModel dn_build_ui_model() {
     }
     model.aiUsage.updatedAtText = aiStatus.updatedAtText;
     model.aiUsage.warningText = aiStatus.warningText;
+    model.aiUsage.serverNow = aiStatus.serverNow;
     model.aiUsage.nextRefreshInSec = aiStatus.nextRefreshInSec;
     model.overview.aiTotalPercent = aiStatus.totalPercent;
     model.overview.aiStatusText = aiStatus.fromCache ? "cache" : "demo";

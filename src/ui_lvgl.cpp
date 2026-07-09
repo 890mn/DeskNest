@@ -114,10 +114,10 @@ struct PageObjects {
     lv_obj_t* root = nullptr;
     bool built = false;
 
-    lv_obj_t* labels[16] = {};
+    lv_obj_t* labels[24] = {};
     lv_obj_t* bars[16] = {};
     lv_obj_t* rows[8] = {};
-    lv_obj_t* objs[16] = {};
+    lv_obj_t* objs[24] = {};
 };
 
 static ChromeObjects s_chrome;
@@ -303,6 +303,12 @@ static void format_expire_time_short(char* out, size_t cap, const char* iso_text
     snprintf(out, cap, "%02d:%02d", tm_exp.tm_hour, tm_exp.tm_min);
 }
 
+static time_t parse_iso_local_epoch(const char* iso_text) {
+    struct tm tm_value = {};
+    if (!parse_iso_local_time(iso_text, &tm_value)) return 0;
+    return mktime(&tm_value);
+}
+
 static void format_remaining_short(char* out, size_t cap, time_t now_epoch, const char* iso_text) {
     if (!out || cap == 0) return;
     out[0] = '\0';
@@ -325,6 +331,64 @@ static void format_remaining_short(char* out, size_t cap, time_t now_epoch, cons
     long mins = (diff % 3600) / 60;
     if (hours > 0) snprintf(out, cap, "%ldh%02ldm", hours, mins);
     else snprintf(out, cap, "%ldm", mins > 0 ? mins : 1);
+}
+
+static void format_remaining_hm(char* out, size_t cap, time_t now_epoch, const char* iso_text) {
+    if (!out || cap == 0) return;
+    out[0] = '\0';
+    struct tm tm_exp = {};
+    if (!parse_iso_local_time(iso_text, &tm_exp)) {
+        snprintf(out, cap, "--");
+        return;
+    }
+    time_t exp_epoch = mktime(&tm_exp);
+    if (exp_epoch <= 0 || now_epoch <= 0) {
+        snprintf(out, cap, "%02d:%02d", tm_exp.tm_hour, tm_exp.tm_min);
+        return;
+    }
+    long diff = (long)(exp_epoch - now_epoch);
+    if (diff <= 0) {
+        snprintf(out, cap, "0h0m");
+        return;
+    }
+    long hours = diff / 3600;
+    long mins = (diff % 3600) / 60;
+    if ((diff % 60) != 0) ++mins;
+    if (mins >= 60) {
+        mins -= 60;
+        ++hours;
+    }
+    snprintf(out, cap, "%ldh%02ldm", hours, mins);
+}
+
+static void format_week_expire(char* out, size_t cap, time_t now_epoch, const char* iso_text) {
+    if (!out || cap == 0) return;
+    out[0] = '\0';
+    struct tm tm_exp = {};
+    if (!parse_iso_local_time(iso_text, &tm_exp)) {
+        snprintf(out, cap, "--");
+        return;
+    }
+    time_t exp_epoch = mktime(&tm_exp);
+    if (exp_epoch <= 0 || now_epoch <= 0) {
+        snprintf(out, cap, "%02d:%02d", tm_exp.tm_hour, tm_exp.tm_min);
+        return;
+    }
+    long diff = (long)(exp_epoch - now_epoch);
+    if (diff < 0) diff = 0;
+    long days = diff / 86400;
+    snprintf(out, cap, "%ldd %02d:%02d", days, tm_exp.tm_hour, tm_exp.tm_min);
+}
+
+static void format_date_short(char* out, size_t cap, const char* iso_text) {
+    if (!out || cap == 0) return;
+    out[0] = '\0';
+    struct tm tm_exp = {};
+    if (!parse_iso_local_time(iso_text, &tm_exp)) {
+        snprintf(out, cap, "--");
+        return;
+    }
+    snprintf(out, cap, "%02d-%02d", tm_exp.tm_mon + 1, tm_exp.tm_mday);
 }
 
 static uint32_t bar_color(int pct) {
@@ -644,7 +708,7 @@ static void build_ai_usage() {
     PageObjects& po = page_objects(PAGE_PORTRAIT_AI_USAGE);
     if (po.built) return;
     lv_obj_t* root = make_page_root(PAGE_PORTRAIT_AI_USAGE);
-    lv_obj_set_style_pad_gap(root, 8, 0);
+    lv_obj_set_flex_align(root, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
 
     lv_obj_t* top = make_row(root, 46, 4);
     po.labels[0] = make_label(top, &sty_time32, "--:--");
@@ -693,23 +757,45 @@ static void build_ai_usage() {
     lv_obj_set_style_text_color(po.labels[5], lv_color_hex(C_MINIMAX), 0);
 
     for (int i = 0; i < 4; ++i) {
-        lv_obj_t* row = make_row(root, 20, 8);
+        lv_obj_t* row = make_row(root, 18, 8);
         po.labels[6 + i * 2] = make_label(row, &sty_text16);
         lv_obj_set_flex_grow(po.labels[6 + i * 2], 1);
         po.labels[7 + i * 2] = make_label(row, &sty_ascii14);
         lv_obj_set_style_text_color(po.labels[7 + i * 2], lv_color_hex(C_BRAND), 0);
-        lv_obj_set_width(po.labels[7 + i * 2], 50);
+        lv_obj_set_width(po.labels[7 + i * 2], 64);
         lv_obj_set_style_text_align(po.labels[7 + i * 2], LV_TEXT_ALIGN_RIGHT, 0);
-        make_track(root, 220, 8, &po.bars[8 + i]);
+        make_track(root, 220, 7, &po.bars[8 + i]);
     }
 
-    lv_obj_t* codex = lv_obj_create(root);
-    lv_obj_set_size(codex, 220, 30);
-    lv_obj_add_style(codex, &sty_card, 0);
-    lv_obj_set_style_radius(codex, 14, 0);
-    po.objs[2] = codex;
-    po.labels[14] = make_label(codex, &sty_ascii14, "");
-    lv_obj_set_width(po.labels[14], 204);
+    lv_obj_t* codex_row = make_row(root, 34, 6);
+    po.objs[2] = codex_row;
+    lv_obj_t* count_box = lv_obj_create(codex_row);
+    lv_obj_set_size(count_box, 30, 30);
+    lv_obj_add_style(count_box, &sty_card, 0);
+    lv_obj_set_style_radius(count_box, 6, 0);
+    po.objs[3] = count_box;
+    po.labels[14] = make_label(count_box, &sty_ascii14, "0");
+    lv_obj_center(po.labels[14]);
+
+    lv_obj_t* bubbles = lv_obj_create(codex_row);
+    plain(bubbles);
+    lv_obj_set_size(bubbles, 184, 34);
+    lv_obj_set_flex_flow(bubbles, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(bubbles, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_gap(bubbles, 4, 0);
+    po.objs[4] = bubbles;
+    for (int i = 0; i < 4; ++i) {
+        lv_obj_t* bubble = lv_obj_create(bubbles);
+        lv_obj_add_style(bubble, &sty_card, 0);
+        lv_obj_set_width(bubble, 85);
+        lv_obj_set_style_radius(bubble, 12, 0);
+        lv_obj_set_height(bubble, 24);
+        lv_obj_set_style_pad_hor(bubble, 0, 0);
+        lv_obj_set_style_pad_ver(bubble, 4, 0);
+        po.objs[5 + i] = bubble;
+        po.labels[15 + i] = make_label(bubble, &sty_ascii14, "");
+        lv_obj_center(po.labels[15 + i]);
+    }
 
     po.built = true;
 }
@@ -718,7 +804,8 @@ static void update_ai_usage(const UiModel& m) {
     PageObjects& po = page_objects(PAGE_PORTRAIT_AI_USAGE);
     char buf[48];
     char codex_buf[160];
-    const time_t now_epoch = dn_ai_usage_now_epoch();
+    time_t now_epoch = parse_iso_local_epoch(m.aiUsage.serverNow);
+    if (now_epoch <= 0) now_epoch = dn_ai_usage_now_epoch();
     const uint8_t chatgpt_left = (uint8_t)(m.aiUsage.chatgpt.percent >= 100 ? 0 : 100 - m.aiUsage.chatgpt.percent);
     const uint8_t minimax_left = (uint8_t)(m.aiUsage.minimax.percent >= 100 ? 0 : 100 - m.aiUsage.minimax.percent);
 
@@ -751,29 +838,31 @@ static void update_ai_usage(const UiModel& m) {
     };
     for (int i = 0; i < 4; ++i) {
         set_text(po.labels[6 + i * 2], rows[i].name);
-        format_expire_time_short(buf, sizeof(buf), expire_ats[i]);
+        if ((i % 2) == 0) format_remaining_hm(buf, sizeof(buf), now_epoch, expire_ats[i]);
+        else format_week_expire(buf, sizeof(buf), now_epoch, expire_ats[i]);
         set_text(po.labels[7 + i * 2], buf);
         lv_obj_set_style_text_color(po.labels[7 + i * 2], lv_color_hex(rows[i].color), 0);
         set_bar(po.bars[8 + i], rows[i].percent, 220);
         lv_obj_set_style_bg_color(po.bars[8 + i], lv_color_hex(rows[i].color), 0);
     }
 
-    codex_buf[0] = '\0';
-    for (uint8_t i = 0; i < m.aiUsage.codexResetCount && i < 4; ++i) {
-        char remain[24];
-        char expire[16];
-        format_remaining_short(remain, sizeof(remain), now_epoch, m.aiUsage.codexResets[i].expireAt);
-        format_expire_time_short(expire, sizeof(expire), m.aiUsage.codexResets[i].expireAt);
-        char item[48];
-        snprintf(item, sizeof(item), "%s %s %s",
-                 m.aiUsage.codexResets[i].name[0] ? m.aiUsage.codexResets[i].name : "Codex",
-                 remain, expire);
-        if (codex_buf[0]) strncat(codex_buf, "  ", sizeof(codex_buf) - strlen(codex_buf) - 1);
-        strncat(codex_buf, item, sizeof(codex_buf) - strlen(codex_buf) - 1);
+    snprintf(codex_buf, sizeof(codex_buf), "%u", (unsigned)m.aiUsage.codexResetCount);
+    set_text(po.labels[14], codex_buf);
+    for (uint8_t i = 0; i < 4; ++i) {
+        if (!po.objs[5 + i] || !po.labels[15 + i]) continue;
+        if (i < m.aiUsage.codexResetCount) {
+            char date_text[24];
+            format_date_short(date_text, sizeof(date_text), m.aiUsage.codexResets[i].expireAt);
+            snprintf(codex_buf, sizeof(codex_buf), "CR%u %s", (unsigned)(i + 1), date_text);
+            set_text(po.labels[15 + i], codex_buf);
+            lv_obj_clear_flag(po.objs[5 + i], LV_OBJ_FLAG_HIDDEN);
+        } else {
+            set_text(po.labels[15 + i], "");
+            lv_obj_add_flag(po.objs[5 + i], LV_OBJ_FLAG_HIDDEN);
+        }
     }
-    set_text(po.labels[14], codex_buf[0] ? codex_buf : "");
     if (po.objs[2]) {
-        if (codex_buf[0]) lv_obj_clear_flag(po.objs[2], LV_OBJ_FLAG_HIDDEN);
+        if (m.aiUsage.codexResetCount > 0) lv_obj_clear_flag(po.objs[2], LV_OBJ_FLAG_HIDDEN);
         else lv_obj_add_flag(po.objs[2], LV_OBJ_FLAG_HIDDEN);
     }
 }

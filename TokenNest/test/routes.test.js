@@ -72,8 +72,8 @@ test('status.json: chatgpt reset credits reflected in codexResets', async () => 
             secondary: { usedPercent: 43, resetsInSeconds: 86400 },
             resetCreditsAvailable: 2,
             resetCredits: [
-                { id: 'r1', status: 'available', title: 'Full reset', grantedAt: '06-18 08:10', expiresAt: '07-18 08:10', grantedAtUtc: '2026-06-18T00:10:56Z', expiresAtUtc: '2026-07-18T00:10:56Z' },
-                { id: 'r2', status: 'available', title: 'Full reset', grantedAt: '07-01 08:10', expiresAt: '07-31 08:10', grantedAtUtc: '2026-07-01T00:10:56Z', expiresAtUtc: '2026-07-31T00:10:56Z' },
+                { id: 'r1', status: 'available', title: 'Full reset', grantedAt: '2026-07-18T00:10:56.472734Z', expiresAt: '2026-07-18T00:10:56.472734Z', grantedAtUtc: '2026-07-18T00:10:56.472734Z', expiresAtUtc: '2026-07-18T00:10:56.472734Z' },
+                { id: 'r2', status: 'available', title: 'Full reset', grantedAt: '2026-07-31T00:10:56.472734Z', expiresAt: '2026-07-31T00:10:56.472734Z', grantedAtUtc: '2026-07-31T00:10:56.472734Z', expiresAtUtc: '2026-07-31T00:10:56.472734Z' },
             ],
         }, { ok: true, models: [] });
         const getAggregate = () => tn_aggregate({ cacheDir: dir, staleThresholdSec: 300 });
@@ -86,9 +86,9 @@ test('status.json: chatgpt reset credits reflected in codexResets', async () => 
         handler({}, res);
         assert.equal(res.body.codexResets.length, 2);
         assert.equal(res.body.codexResets[0].name, 'Codex RE1');
-        assert.equal(res.body.codexResets[0].expireAt, '07-18 08:10');
+        assert.equal(res.body.codexResets[0].expireAt, '2026-07-18T08:10:56+08:00');
         assert.equal(res.body.codexResets[1].name, 'Codex RE2');
-        assert.equal(res.body.codexResets[1].expireAt, '07-31 08:10');
+        assert.equal(res.body.codexResets[1].expireAt, '2026-07-31T08:10:56+08:00');
         // expired/redeemed 卡应被过滤
     } finally { rmSync(dir, { recursive: true, force: true }); }
 });

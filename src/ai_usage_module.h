@@ -56,6 +56,7 @@ struct AIUsageStatus {
     uint8_t codexResetCount = 0;
     const char* updatedAtText = "";
     const char* warningText = "";
+    const char* serverNow = "";
     uint16_t nextRefreshInSec = 0;
     bool fromCache = false;
 };
@@ -101,6 +102,7 @@ inline AIUsageStatus dn_ai_usage_demo_status() {
 struct AIUsageParseStorage {
     char updatedAtText[32] = "";
     char warningText[48] = "";
+    char serverNow[40] = "";
     char chatgptStatus[24] = "";
     char chatgptDetail[48] = "";
     char minimaxStatus[24] = "";
@@ -288,6 +290,7 @@ inline bool dn_ai_usage_parse_cc_switch_status(const char* json,
         dn_json_string_value(json, "updatedAt", storage->updatedAtText, sizeof(storage->updatedAtText));
     dn_json_string_value(json, "warningText", storage->warningText, sizeof(storage->warningText)) ||
         dn_json_string_value(json, "warning", storage->warningText, sizeof(storage->warningText));
+    dn_json_string_value(json, "serverNow", storage->serverNow, sizeof(storage->serverNow));
 
     dn_parse_service_usage(json, "chatgpt", "ChatGPT",
                            storage->chatgptStatus, sizeof(storage->chatgptStatus),
@@ -321,6 +324,7 @@ inline bool dn_ai_usage_parse_cc_switch_status(const char* json,
     }
     status.updatedAtText = storage->updatedAtText[0] ? storage->updatedAtText : "cached";
     status.warningText = storage->warningText;
+    status.serverNow = storage->serverNow;
     status.fromCache = true;
     *out = status;
     return true;

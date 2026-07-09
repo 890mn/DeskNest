@@ -83,9 +83,11 @@ const tn_window_to_pct = (win) => {
 };
 
 // 剩余多少秒后重置（倒计时用）
+// reset_at 是未来绝对 Unix 时间戳，不是距今秒数
 const tn_window_to_reset_sec = (win) => {
     if (!win) return 0;
-    if (typeof win.reset_at === 'number') {
+    if (typeof win.reset_at === 'number' && win.reset_at > 1_000_000_000) {
+        // reset_at 是未来 Unix 时间戳（> 1B），转距今秒数
         return Math.max(0, Math.floor(win.reset_at - Date.now() / 1000));
     }
     if (typeof win.reset_after_seconds === 'number') return Math.max(0, Math.floor(win.reset_after_seconds));
@@ -130,25 +132,29 @@ const tn_parse_wham = (json) => {
     };
 };
 
-// UTC ISO 字符串 → 本地"MM-DD HH:MM"格式
-const tn_utc_to_local = (utc) => {
+// UTC ISO 字符串 → 北京时间 "YYYY-MM-DDTHH:MM:SS+08:00"
+const tn_utc_to_iso_cst = (utc) => {
     if (!utc) return null;
     const d = new Date(utc);
-    return d.toLocaleString('zh-CN', {
+    // toLocaleString 带 timeZone: 'Asia/Shanghai' 已经是北京时间
+    const s = d.toLocaleString('zh-CN', {
         timeZone: 'Asia/Shanghai',
-        month: '2-digit', day: '2-digit',
-        hour: '2-digit', minute: '2-digit',
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
         hour12: false,
     });
+    // "2026/07/18 08:10:00" → "2026-07-18T08:10:00+08:00"
+    return s.replace(/\//g, '-').replace(' ', 'T') + '+08:00';
 };
 
 // 每张重置卡的标准化结构
 const tn_credit_to_obj = (c) => ({
     id: c.id ?? null,
-    status: c.status ?? 'unknown',          // available | redeemed | expired
+    status: c.status ?? 'unknown',
     title: c.title ?? null,
-    grantedAt: tn_utc_to_local(c.granted_at), // 北京时间
-    expiresAt: tn_utc_to_local(c.expires_at), // 北京时间
+    // 存 UTC ISO 字符串，格式化时再转北京时间
+    grantedAt: c.granted_at ?? null,
+    expiresAt: c.expires_at ?? null,
     grantedAtUtc: c.granted_at ?? null,
     expiresAtUtc: c.expires_at ?? null,
 });
