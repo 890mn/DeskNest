@@ -17,6 +17,7 @@
 #include "gesture.h"
 
 #include <Arduino.h>
+#include <esp_log.h>
 #include <unihiker_k10.h>
 
 namespace desknest {
@@ -32,6 +33,22 @@ Sensors g_sensors;
 // ---------------------------------------------------------------------------
 UNIHIKER_K10 k10;
 AHT20        aht;
+static bool  s_k10_bootstrap_ready = false;
+
+void dn_k10_bootstrap() {
+    if (s_k10_bootstrap_ready) return;
+    Serial.println("[D][SENSORS] bootstrap K10 BSP...");
+    esp_log_level_set("initBoard", ESP_LOG_NONE);
+    esp_log_level_set("gpio", ESP_LOG_WARN);
+    esp_log_level_set("I2S", ESP_LOG_WARN);
+    k10.begin();
+    s_k10_bootstrap_ready = true;
+    Serial.println("[D][SENSORS] K10 BSP bootstrap ready");
+}
+
+bool dn_k10_bootstrap_ready() {
+    return s_k10_bootstrap_ready;
+}
 
 // SC7A20H 默认量程 ±2g：12-bit 输出对应 1024 LSB/g
 constexpr float SC7A20H_LSB_PER_G = 1024.0f;
@@ -41,8 +58,9 @@ constexpr float SC7A20H_LSB_PER_G = 1024.0f;
 // ============================================================================
 
 void Sensors::begin() {
+    if (_initialized) return;
     Serial.println("[D][SENSORS] init K10 BSP...");
-    k10.begin();
+    dn_k10_bootstrap();
     _initialized = true;
 
     // 首帧加速度：gesture engine 启动后立刻能拿到第一组数据
@@ -52,7 +70,7 @@ void Sensors::begin() {
     Serial.println("[D][SENSORS]   AHT20 @0x38 (1Hz auto-task)");
     Serial.println("[D][SENSORS]   LTR303ALS @0x29 (auto-init)");
     Serial.println("[D][SENSORS]   SC7A20H @0x19 (auto-init, ~10Hz gesture_task)");
-    Serial.println("[D][SENSORS]   battery: K10 无内置电池，返回 invalid");
+    Serial.println("[D][SENSORS]   battery: skipped (not supported on K10)");
 }
 
 // ============================================================================

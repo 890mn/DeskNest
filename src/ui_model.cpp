@@ -3,6 +3,7 @@
 
 #include "ui_model.h"
 
+#include "boot_splash.h"
 #include "sensors.h"
 #include "state_machine.h"
 
@@ -55,8 +56,10 @@ UiModel dn_build_ui_model() {
     in.shakeDirection = g_gesture.shakeDirection();
 
     UiModel model = dn_build_ui_model_from_inputs(in);
+    const BootSplashStatus boot = dn_boot_splash_status();
+    const bool boot_active = in.state.system == SYSTEM_BOOT || boot.active || in.state.page == PAGE_BOOT_FAILURE;
 
-    const AIUsageStatus aiStatus = dn_ai_usage_status();
+    const AIUsageStatus aiStatus = boot_active ? dn_ai_usage_demo_status() : dn_ai_usage_status();
     model.aiUsage.totalPercent = aiStatus.totalPercent;
     model.aiUsage.chatgpt = dn_usage_item(aiStatus.chatgpt);
     model.aiUsage.codex = dn_usage_item(aiStatus.codex);
@@ -73,10 +76,10 @@ UiModel dn_build_ui_model() {
     model.overview.aiTotalPercent = aiStatus.totalPercent;
     model.overview.aiStatusText = aiStatus.fromCache ? "cache" : "demo";
     model.overview.updatedAtText = aiStatus.updatedAtText;
-    const char* net_time = dn_ai_usage_time_text();
+    const char* net_time = boot_active ? "" : dn_ai_usage_time_text();
     model.overview.timeText = (net_time && net_time[0]) ? net_time : dn_ui_clock_fallback_text(in.nowMs);
 
-    const AIWiFiStatus wifi = dn_ai_usage_wifi_status();
+    const AIWiFiStatus wifi = boot_active ? AIWiFiStatus{} : dn_ai_usage_wifi_status();
     model.status.wifiState = dn_ui_wifi_state(wifi.state);
     switch (model.status.wifiState) {
         case UI_WIFI_CONNECTED: {
@@ -109,6 +112,37 @@ UiModel dn_build_ui_model() {
         default:
             model.status.wifiText = "WiFi --";
             model.status.syncText = "No config";
+            break;
+    }
+
+    model.boot.active = boot.active;
+    model.boot.k10Ready = boot.k10Ready;
+    model.boot.wifiReady = boot.wifiReady;
+    model.boot.timeReady = boot.timeReady;
+    model.boot.aiReady = boot.aiReady;
+    model.boot.ready = boot.ready;
+    model.boot.failed = boot.failed;
+    model.boot.failureReason = boot.failureReason;
+    model.boot.fadePct = boot.fadePct;
+
+    switch (boot.failureReason) {
+        case BOOT_FAIL_WIFI:
+            model.bootFailure.title = "WiFi connect failed";
+            model.bootFailure.detail = "Could not join saved network in 6s";
+            model.bootFailure.hint = "Check SSID / signal, then reboot";
+            break;
+        case BOOT_FAIL_TIME:
+            model.bootFailure.title = "Time sync failed";
+            model.bootFailure.detail = "NTP did not complete in 6s";
+            model.bootFailure.hint = "Check network access, then reboot";
+            break;
+        case BOOT_FAIL_AI:
+            model.bootFailure.title = "AI fetch failed";
+            model.bootFailure.detail = "Live usage data was not returned in 6s";
+            model.bootFailure.hint = "Check server URL, then reboot";
+            break;
+        case BOOT_FAIL_NONE:
+        default:
             break;
     }
 

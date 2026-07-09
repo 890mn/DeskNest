@@ -40,6 +40,7 @@ static const PageDef DN_PAGE_REGISTRY[] = {
 
     { PAGE_SLEEP_FACE_DOWN,      PAGE_GROUP_SPECIAL,   "Roost",       false },
     { PAGE_CONFIG_PORTAL,        PAGE_GROUP_SPECIAL,   "WiFi Setup",  false },
+    { PAGE_BOOT_FAILURE,         PAGE_GROUP_SPECIAL,   "Boot Error",  false },
 };
 
 static const uint8_t DN_PAGE_REGISTRY_COUNT =

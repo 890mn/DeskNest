@@ -3,6 +3,7 @@
 
 #include "ui.h"
 #include "ai_icon_assets.h"
+#include "boot_logo_asset.h"
 #include "config.h"
 #include "ui_model.h"
 
@@ -76,6 +77,7 @@ static constexpr uint32_t C_BLUE      = 0xA8B5C4;
 static constexpr uint32_t C_GPT       = 0x8EA9C4;
 static constexpr uint32_t C_MINIMAX   = 0xB49ACF;
 static constexpr uint32_t C_ALERT     = 0xC97C7C;
+static constexpr uint32_t C_BOOT      = 0xE16811;
 
 static lv_style_t sty_plain;
 static lv_style_t sty_card;
@@ -120,8 +122,21 @@ struct PageObjects {
     lv_obj_t* objs[24] = {};
 };
 
+struct BootOverlayObjects {
+    lv_obj_t* root = nullptr;
+    lv_obj_t* panel = nullptr;
+    lv_obj_t* logo = nullptr;
+    lv_obj_t* title = nullptr;
+    lv_obj_t* subtitle = nullptr;
+    lv_obj_t* tagline = nullptr;
+    lv_obj_t* bubbles = nullptr;
+    lv_obj_t* bubble_objs[5] = {};
+    lv_obj_t* bubble_labels[5] = {};
+};
+
 static ChromeObjects s_chrome;
 static PageObjects s_pages[PAGE_COUNT];
+static BootOverlayObjects s_boot;
 static UiModel s_model;
 
 class LvglLock {
@@ -555,7 +570,10 @@ static void chrome_build() {
 }
 
 static void chrome_update(const UiModel& m) {
-    const bool special = m.view.page == PAGE_SLEEP_FACE_DOWN || m.view.page == PAGE_CONFIG_PORTAL;
+    const bool special = m.boot.active ||
+                         m.view.page == PAGE_SLEEP_FACE_DOWN ||
+                         m.view.page == PAGE_CONFIG_PORTAL ||
+                         m.view.page == PAGE_BOOT_FAILURE;
     if (special) {
         lv_obj_add_flag(s_chrome.header, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(s_chrome.divider, LV_OBJ_FLAG_HIDDEN);
@@ -624,6 +642,113 @@ static void chrome_update(const UiModel& m) {
                                     lv_color_hex(active == i ? C_BRAND : C_DIM),
                                     0);
     }
+}
+
+static void boot_overlay_build() {
+    if (s_boot.root) return;
+
+    s_boot.root = lv_obj_create(s_scr);
+    plain(s_boot.root);
+    lv_obj_set_size(s_boot.root, SCREEN_W, SCREEN_H);
+    lv_obj_set_pos(s_boot.root, 0, 0);
+    lv_obj_set_style_bg_color(s_boot.root, lv_color_hex(C_BG), 0);
+    lv_obj_set_style_bg_opa(s_boot.root, LV_OPA_COVER, 0);
+    lv_obj_clear_flag(s_boot.root, LV_OBJ_FLAG_SCROLLABLE);
+
+    s_boot.panel = lv_obj_create(s_boot.root);
+    plain(s_boot.panel);
+    lv_obj_set_size(s_boot.panel, 220, 188);
+    lv_obj_set_pos(s_boot.panel, 10, 58);
+
+    s_boot.logo = lv_img_create(s_boot.panel);
+    lv_img_set_src(s_boot.logo, &dn_img_dfrobot_40);
+    lv_obj_set_pos(s_boot.logo, 8, 18);
+    lv_obj_set_style_img_recolor(s_boot.logo, lv_color_hex(C_BOOT), 0);
+    lv_obj_set_style_img_recolor_opa(s_boot.logo, LV_OPA_COVER, 0);
+
+    s_boot.title = make_label(s_boot.panel, &sty_text24, "栖屏 / DeskNest");
+    lv_obj_set_pos(s_boot.title, 64, 18);
+    lv_obj_set_width(s_boot.title, 146);
+
+    s_boot.subtitle = make_label(s_boot.panel, &sty_brand16, "栖于桌面");
+    lv_obj_set_pos(s_boot.subtitle, 64, 54);
+    lv_obj_set_width(s_boot.subtitle, 120);
+
+    s_boot.tagline = make_label(s_boot.panel, &sty_label16, "息于常亮之间");
+    lv_obj_set_pos(s_boot.tagline, 64, 74);
+    lv_obj_set_width(s_boot.tagline, 120);
+
+    s_boot.bubbles = lv_obj_create(s_boot.root);
+    plain(s_boot.bubbles);
+    lv_obj_set_size(s_boot.bubbles, 220, 30);
+    lv_obj_set_pos(s_boot.bubbles, 10, 252);
+    lv_obj_set_flex_flow(s_boot.bubbles, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(s_boot.bubbles, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_gap(s_boot.bubbles, 3, 0);
+
+    const char* labels[5] = {"K10", "WiFi", "Time", "AI", "Ready"};
+    const int widths[5] = {30, 36, 38, 22, 44};
+    for (int i = 0; i < 5; ++i) {
+        lv_obj_t* bubble = lv_obj_create(s_boot.bubbles);
+        lv_obj_add_style(bubble, &sty_card, 0);
+        lv_obj_set_width(bubble, widths[i]);
+        lv_obj_set_height(bubble, 24);
+        lv_obj_set_style_radius(bubble, 12, 0);
+        lv_obj_set_style_pad_hor(bubble, 0, 0);
+        lv_obj_set_style_pad_ver(bubble, 4, 0);
+        s_boot.bubble_objs[i] = bubble;
+        s_boot.bubble_labels[i] = make_label(bubble, &sty_ascii14, labels[i]);
+        lv_obj_center(s_boot.bubble_labels[i]);
+    }
+
+    lv_obj_add_flag(s_boot.root, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void set_boot_overlay_opa(uint8_t opa) {
+    lv_obj_set_style_bg_opa(s_boot.root, opa, 0);
+    lv_obj_set_style_img_opa(s_boot.logo, opa, 0);
+    lv_obj_set_style_text_opa(s_boot.title, opa, 0);
+    lv_obj_set_style_text_opa(s_boot.subtitle, opa, 0);
+    lv_obj_set_style_text_opa(s_boot.tagline, opa, 0);
+    for (int i = 0; i < 5; ++i) {
+        if (s_boot.bubble_objs[i]) lv_obj_set_style_bg_opa(s_boot.bubble_objs[i], opa, 0);
+        if (s_boot.bubble_labels[i]) lv_obj_set_style_text_opa(s_boot.bubble_labels[i], opa, 0);
+    }
+}
+
+static void set_boot_bubble(int idx, const char* text, bool active, bool accent = false) {
+    if (idx < 0 || idx >= 5 || !s_boot.bubble_objs[idx] || !s_boot.bubble_labels[idx]) return;
+    set_text(s_boot.bubble_labels[idx], text);
+    lv_obj_set_style_bg_color(s_boot.bubble_objs[idx],
+                              lv_color_hex(active ? (accent ? C_BOOT : C_BRAND) : C_CARD), 0);
+    lv_obj_set_style_text_color(s_boot.bubble_labels[idx],
+                                lv_color_hex(active ? C_BG : C_LABEL), 0);
+}
+
+static void boot_overlay_update(const UiModel& m) {
+    boot_overlay_build();
+
+    if (!m.boot.active) {
+        lv_obj_add_flag(s_boot.root, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+
+    lv_obj_clear_flag(s_boot.root, LV_OBJ_FLAG_HIDDEN);
+    const uint8_t opa = (uint8_t)(255 - ((uint16_t)m.boot.fadePct * 255U) / 100U);
+    set_boot_overlay_opa(opa);
+
+    set_boot_bubble(0, "K10", m.boot.k10Ready, true);
+    set_boot_bubble(1, "WiFi", m.boot.wifiReady);
+    set_boot_bubble(2, "Time", m.boot.timeReady);
+    set_boot_bubble(3, "AI", m.boot.aiReady);
+    set_boot_bubble(4, "Ready", m.boot.ready, true);
+}
+
+static void hide_all_pages() {
+    for (int i = 0; i < PAGE_COUNT; ++i) {
+        if (s_pages[i].root) lv_obj_add_flag(s_pages[i].root, LV_OBJ_FLAG_HIDDEN);
+    }
+    s_visible_page = PAGE_COUNT;
 }
 
 static void build_overview() {
@@ -1075,6 +1200,32 @@ static void update_config(const UiModel& m) {
     set_text(po.labels[4], m.config.hintText);
 }
 
+static void build_boot_failure() {
+    PageObjects& po = page_objects(PAGE_BOOT_FAILURE);
+    if (po.built) return;
+    lv_obj_t* root = make_page_root(PAGE_BOOT_FAILURE);
+    lv_obj_set_style_pad_top(root, 44, 0);
+
+    po.labels[0] = make_label(root, &sty_ascii14, "Boot Error");
+    lv_obj_set_style_text_color(po.labels[0], lv_color_hex(C_ALERT), 0);
+    po.labels[1] = make_label(root, &sty_text16);
+    lv_obj_set_width(po.labels[1], 220);
+    po.labels[2] = make_label(root, &sty_dim16);
+    lv_obj_set_width(po.labels[2], 220);
+    po.labels[3] = make_label(root, &sty_ascii14);
+    lv_obj_set_width(po.labels[3], 220);
+    lv_obj_set_style_text_color(po.labels[3], lv_color_hex(C_LABEL), 0);
+    po.built = true;
+}
+
+static void update_boot_failure(const UiModel& m) {
+    PageObjects& po = page_objects(PAGE_BOOT_FAILURE);
+    set_text(po.labels[0], m.bootFailure.title);
+    set_text(po.labels[1], m.bootFailure.detail);
+    set_text(po.labels[2], "Home page is blocked until init succeeds");
+    set_text(po.labels[3], m.bootFailure.hint);
+}
+
 static void build_page(UIPage page) {
     switch (page) {
         case PAGE_PORTRAIT_OVERVIEW:    build_overview(); break;
@@ -1084,6 +1235,7 @@ static void build_page(UIPage page) {
         case PAGE_PORTRAIT_SETTINGS:    build_settings(); break;
         case PAGE_SLEEP_FACE_DOWN:      build_face_down(); break;
         case PAGE_CONFIG_PORTAL:        build_config(); break;
+        case PAGE_BOOT_FAILURE:         build_boot_failure(); break;
         case PAGE_LANDSCAPE_OVERVIEW:
         case PAGE_LANDSCAPE_FOCUS:
         case PAGE_LANDSCAPE_CUSTOM:
@@ -1102,6 +1254,7 @@ static UIPage normalized_page(UIPage page) {
         case PAGE_PORTRAIT_SETTINGS:
         case PAGE_SLEEP_FACE_DOWN:
         case PAGE_CONFIG_PORTAL:
+        case PAGE_BOOT_FAILURE:
             return page;
         default:
             return PAGE_PORTRAIT_OVERVIEW;
@@ -1129,6 +1282,7 @@ static void update_page(const UiModel& m) {
         case PAGE_PORTRAIT_SETTINGS:    update_settings(m); break;
         case PAGE_SLEEP_FACE_DOWN:      update_face_down(m); break;
         case PAGE_CONFIG_PORTAL:        update_config(m); break;
+        case PAGE_BOOT_FAILURE:         update_boot_failure(m); break;
         default:                        update_overview(m); break;
     }
 }
@@ -1150,11 +1304,17 @@ void dn_ui_setup() {
     lv_obj_set_style_bg_opa(desknest::s_scr, LV_OPA_COVER, 0);
 
     desknest::chrome_build();
+    desknest::boot_overlay_build();
 
     desknest::s_model = desknest::dn_build_ui_model();
-    desknest::show_page(desknest::s_model.view.page);
     desknest::chrome_update(desknest::s_model);
-    desknest::update_page(desknest::s_model);
+    desknest::boot_overlay_update(desknest::s_model);
+    if (!desknest::s_model.boot.active) {
+        desknest::show_page(desknest::s_model.view.page);
+        desknest::update_page(desknest::s_model);
+    } else {
+        desknest::hide_all_pages();
+    }
 
     lv_task_handler();
     desknest::s_last_ui_update_ms = millis();
@@ -1170,16 +1330,22 @@ void dn_ui_render() {
     const uint32_t now = millis();
     const desknest::UIPage page = desknest::normalized_page(desknest::s_model.view.page);
     const bool page_changed = (page != desknest::s_visible_page);
-    const bool update_due = (now - desknest::s_last_ui_update_ms) >= 200;
+    const uint32_t ui_interval = desknest::s_model.boot.active ? 40 : 200;
+    const bool update_due = (now - desknest::s_last_ui_update_ms) >= ui_interval;
     const bool pump_due = (now - desknest::s_last_lvgl_pump_ms) >= 20;
 
     if (!page_changed && !update_due && !pump_due) return;
 
     desknest::LvglLock lock;
     if (page_changed || update_due) {
-        desknest::show_page(page);
         desknest::chrome_update(desknest::s_model);
-        desknest::update_page(desknest::s_model);
+        desknest::boot_overlay_update(desknest::s_model);
+        if (desknest::s_model.boot.active) {
+            desknest::hide_all_pages();
+        } else {
+            desknest::show_page(page);
+            desknest::update_page(desknest::s_model);
+        }
         desknest::s_last_ui_update_ms = now;
     }
 

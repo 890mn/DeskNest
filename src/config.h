@@ -88,6 +88,7 @@ enum UIPage : uint8_t {
     PAGE_LANDSCAPE_CUSTOM,
     PAGE_SLEEP_FACE_DOWN,
     PAGE_CONFIG_PORTAL,
+    PAGE_BOOT_FAILURE,
     PAGE_COUNT,  // 哨兵
 };
 

@@ -7,9 +7,7 @@
 
 #include <Arduino.h>
 #include <HTTPClient.h>
-#include <LittleFS.h>
 #include <WiFi.h>
-#include <esp_partition.h>
 #include <time.h>
 
 namespace desknest {
@@ -24,9 +22,6 @@ constexpr uint32_t kRefreshIntervalMs = 30000;
 static AIUsageParseStorage s_storage;
 static AIUsageStatus s_cached;
 static AIWiFiStatus s_wifi_status;
-static bool s_fs_checked = false;
-static bool s_fs_started = false;
-static const char* s_fs_label = nullptr;
 static bool s_loaded_once = false;
 static uint32_t s_last_load_ms = 0;
 static uint32_t s_last_wifi_attempt_ms = 0;
@@ -34,6 +29,8 @@ static uint32_t s_last_wifi_scan_ms = 0;
 static bool s_wifi_started = false;
 static bool s_time_sync_started = false;
 static bool s_time_synced = false;
+static bool s_data_ready = false;
+static bool s_live_data_ready = false;
 static uint32_t s_last_time_sync_ms = 0;
 static uint32_t s_time_base_ms = 0;
 static time_t s_time_base_epoch = 0;
@@ -42,6 +39,8 @@ constexpr uint32_t kWiFiConnectCooldownMs = 20000;
 constexpr uint32_t kWiFiNoSsidCooldownMs = 45000;
 constexpr uint32_t kWiFiScanCooldownMs = 30000;
 constexpr uint32_t kTimeSyncCooldownMs = 60000;
+constexpr uint32_t kTimeSyncPendingRetryMs = 2500;
+constexpr uint32_t kBootstrapRetryMs = 2000;
 
 bool tokennest_configured() {
     return DESKNEST_TOKENNEST_STATUS_URL[0] != '\0';
@@ -83,10 +82,24 @@ void refresh_wifi_scan(uint32_t now) {
     WiFi.scanDelete();
 }
 
+void apply_server_time_basis(const char* server_now_text) {
+    const time_t epoch = dn_apply_server_now_boot_offset(dn_parse_iso8601_epoch(server_now_text));
+    if (epoch <= 0) return;
+    s_time_synced = true;
+    s_time_base_epoch = epoch;
+    s_time_base_ms = millis();
+
+    struct tm tm_now;
+    localtime_r(&epoch, &tm_now);
+    Serial.printf("[D][AI][TIME] serverNow %04d-%02d-%02d %02d:%02d:%02d\n",
+                  tm_now.tm_year + 1900, tm_now.tm_mon + 1, tm_now.tm_mday,
+                  tm_now.tm_hour, tm_now.tm_min, tm_now.tm_sec);
+}
+
 void ensure_network_time(uint32_t now) {
     if (WiFi.status() != WL_CONNECTED) return;
     if (s_time_synced && now - s_last_time_sync_ms < kTimeSyncCooldownMs) return;
-    if (!s_time_synced && s_last_time_sync_ms != 0 && now - s_last_time_sync_ms < kTimeSyncCooldownMs) return;
+    if (!s_time_synced && s_last_time_sync_ms != 0 && now - s_last_time_sync_ms < kTimeSyncPendingRetryMs) return;
 
     s_last_time_sync_ms = now;
     if (!s_time_sync_started) {
@@ -96,7 +109,7 @@ void ensure_network_time(uint32_t now) {
     }
 
     struct tm tm_now;
-    if (!getLocalTime(&tm_now, 1200)) {
+    if (!getLocalTime(&tm_now, 200)) {
         Serial.println("[D][AI][TIME] sync pending");
         return;
     }
@@ -231,6 +244,10 @@ bool fetch_tokennest_status(AIUsageStatus* out, uint32_t now) {
         return false;
     }
     const bool parsed = dn_ai_usage_parse_cc_switch_status(json, &s_storage, out);
+    if (parsed) {
+        out->fromCache = false;
+        apply_server_time_basis(out->serverNow);
+    }
     Serial.printf("[D][AI][HTTP] bytes=%d parsed=%d total=%u next=%us warn='%s'\n",
                   n, parsed ? 1 : 0, parsed ? (unsigned)out->totalPercent : 0,
                   parsed ? (unsigned)out->nextRefreshInSec : 0,
@@ -238,70 +255,26 @@ bool fetch_tokennest_status(AIUsageStatus* out, uint32_t now) {
     return parsed;
 }
 
-bool read_usage_file(const char* path, char* buf, size_t cap) {
-    if (!path || !buf || cap == 0) return false;
-    File f = LittleFS.open(path, "r");
-    if (!f) return false;
-    const size_t n = f.readBytes(buf, cap - 1);
-    buf[n] = '\0';
-    f.close();
-    return n > 0;
-}
-
-bool load_from_cache_file(AIUsageStatus* out) {
-    static char json[1024];
-
-    if (!s_fs_checked) {
-        s_fs_checked = true;
-        const char* labels[] = {"spiffs", "littlefs"};
-        for (const char* label : labels) {
-            const esp_partition_t* part = esp_partition_find_first(
-                ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, label);
-            if (part) {
-                s_fs_label = label;
-                break;
-            }
-        }
-        Serial.printf("[D][AI][FS] partition=%s\n", s_fs_label ? s_fs_label : "missing");
-    }
-    if (!s_fs_label) return false;
-
-    if (!s_fs_started) {
-        s_fs_started = LittleFS.begin(false, "/littlefs", 10, s_fs_label);
-        Serial.printf("[D][AI][FS] begin label=%s ok=%d\n", s_fs_label, s_fs_started ? 1 : 0);
-        if (!s_fs_started) return false;
-    }
-
-    for (const char* path : kUsagePaths) {
-        if (!read_usage_file(path, json, sizeof(json))) {
-            Serial.printf("[D][AI][FS] miss %s\n", path);
-            continue;
-        }
-        const bool parsed = dn_ai_usage_parse_cc_switch_status(json, &s_storage, out);
-        Serial.printf("[D][AI][FS] read %s parsed=%d\n", path, parsed ? 1 : 0);
-        if (parsed) return true;
-    }
-    return false;
-}
-
 } // namespace
 
 AIUsageStatus dn_ai_usage_status() {
     const uint32_t now = millis();
     refresh_wifi_link(now, true);
-    if (!s_loaded_once || now - s_last_load_ms >= kRefreshIntervalMs) {
+    const uint32_t refresh_ms = s_data_ready ? kRefreshIntervalMs : kBootstrapRetryMs;
+    if (!s_loaded_once || now - s_last_load_ms >= refresh_ms) {
         AIUsageStatus parsed;
         Serial.printf("[D][AI] refresh start loaded=%d age=%lums\n",
                       s_loaded_once ? 1 : 0,
                       (unsigned long)(s_loaded_once ? now - s_last_load_ms : 0));
         if (fetch_tokennest_status(&parsed, now)) {
             s_cached = parsed;
+            s_data_ready = true;
+            s_live_data_ready = true;
             Serial.println("[D][AI] source=http");
-        } else if (load_from_cache_file(&parsed)) {
-            s_cached = parsed;
-            Serial.println("[D][AI] source=fs");
         } else if (!s_loaded_once) {
             s_cached = dn_ai_usage_demo_status();
+            s_data_ready = false;
+            s_live_data_ready = false;
             Serial.println("[D][AI] source=demo");
         } else {
             Serial.println("[D][AI] source=previous");
@@ -311,9 +284,9 @@ AIUsageStatus dn_ai_usage_status() {
     }
     AIUsageStatus current = s_cached;
     const uint32_t elapsed = now >= s_last_load_ms ? now - s_last_load_ms : 0;
-    current.nextRefreshInSec = elapsed >= kRefreshIntervalMs
+    current.nextRefreshInSec = elapsed >= refresh_ms
         ? 0
-        : (uint16_t)((kRefreshIntervalMs - elapsed + 999) / 1000);
+        : (uint16_t)((refresh_ms - elapsed + 999) / 1000);
     return current;
 }
 
@@ -354,6 +327,18 @@ time_t dn_ai_usage_now_epoch() {
     return s_time_base_epoch + (time_t)((now_ms - s_time_base_ms) / 1000UL);
 }
 
+bool dn_ai_usage_time_ready() {
+    return s_time_synced && s_time_base_epoch > 0;
+}
+
+bool dn_ai_usage_data_ready() {
+    return s_data_ready;
+}
+
+bool dn_ai_usage_live_data_ready() {
+    return s_live_data_ready;
+}
+
 } // namespace desknest
 
 #else
@@ -374,6 +359,15 @@ const char* dn_ai_usage_time_text() {
 }
 time_t dn_ai_usage_now_epoch() {
     return 0;
+}
+bool dn_ai_usage_time_ready() {
+    return false;
+}
+bool dn_ai_usage_data_ready() {
+    return false;
+}
+bool dn_ai_usage_live_data_ready() {
+    return false;
 }
 } // namespace desknest
 

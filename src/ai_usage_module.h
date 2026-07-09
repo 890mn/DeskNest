@@ -67,6 +67,36 @@ inline uint8_t dn_clamp_percent(int value) {
     return (uint8_t)value;
 }
 
+inline int64_t dn_days_from_civil(int y, unsigned m, unsigned d) {
+    y -= m <= 2;
+    const int era = (y >= 0 ? y : y - 399) / 400;
+    const unsigned yoe = (unsigned)(y - era * 400);
+    const unsigned doy = (153 * (m + (m > 2 ? (unsigned)-3 : 9)) + 2) / 5 + d - 1;
+    const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    return era * 146097 + (int)doe - 719468;
+}
+
+inline time_t dn_parse_iso8601_epoch(const char* text) {
+    if (!text || !text[0]) return 0;
+    int y = 0, mon = 0, d = 0, h = 0, min = 0, s = 0;
+    char sign = '\0';
+    int off_h = 0, off_m = 0;
+    if (sscanf(text, "%d-%d-%dT%d:%d:%d%c%d:%d",
+               &y, &mon, &d, &h, &min, &s, &sign, &off_h, &off_m) < 7) {
+        return 0;
+    }
+    int64_t epoch = dn_days_from_civil(y, (unsigned)mon, (unsigned)d) * 86400LL
+        + h * 3600LL + min * 60LL + s;
+    const int offset_sec = off_h * 3600 + off_m * 60;
+    if (sign == '+') epoch -= offset_sec;
+    else if (sign == '-') epoch += offset_sec;
+    return epoch > 0 ? (time_t)epoch : 0;
+}
+
+inline time_t dn_apply_server_now_boot_offset(time_t epoch) {
+    return epoch > 0 ? (epoch + 8 * 3600) : 0;
+}
+
 inline AIUsageItemStatus dn_ai_usage_item(const char* name,
                                           int percent,
                                           const char* statusText,
@@ -336,6 +366,9 @@ void dn_ai_usage_service_begin();
 void dn_ai_usage_service_tick();
 const char* dn_ai_usage_time_text();
 time_t dn_ai_usage_now_epoch();
+bool dn_ai_usage_time_ready();
+bool dn_ai_usage_data_ready();
+bool dn_ai_usage_live_data_ready();
 
 } // namespace desknest
 

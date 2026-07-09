@@ -12,6 +12,7 @@
 #include "state_machine.h"
 #include "gesture.h"
 #include "page_registry.h"
+#include "boot_splash.h"
 #include "environment_module.h"
 #include "ai_usage_module.h"
 #include "focus_module.h"
@@ -240,6 +241,24 @@ struct UiConfigProps {
     const char* hintText = "";
 };
 
+struct UiBootSplashProps {
+    bool active = false;
+    bool k10Ready = false;
+    bool wifiReady = false;
+    bool timeReady = false;
+    bool aiReady = false;
+    bool ready = false;
+    bool failed = false;
+    BootFailureReason failureReason = BOOT_FAIL_NONE;
+    uint8_t fadePct = 0;
+};
+
+struct UiBootFailureProps {
+    const char* title = "";
+    const char* detail = "";
+    const char* hint = "";
+};
+
 struct UiAnimationProps {
     ShakeVisualPhase shakePhase = SHAKE_VISUAL_IDLE;
     int8_t shakeDirection = 0;
@@ -265,6 +284,8 @@ struct UiModel {
     UiCustomProps customPage;
     UiFaceDownProps faceDown;
     UiConfigProps config;
+    UiBootSplashProps boot;
+    UiBootFailureProps bootFailure;
 
     UiAnimationProps animation;
 };
@@ -321,6 +342,7 @@ inline ScreenMode dn_screen_mode_for_page(UIPage p) {
         case PAGE_LANDSCAPE_CUSTOM:     return SCREEN_LANDSCAPE_CUSTOM;
         case PAGE_SLEEP_FACE_DOWN:      return SCREEN_FACE_DOWN;
         case PAGE_CONFIG_PORTAL:        return SCREEN_CONFIG;
+        case PAGE_BOOT_FAILURE:         return SCREEN_CONFIG;
         default:                        return SCREEN_PORTRAIT_OVERVIEW;
     }
 }
@@ -511,6 +533,10 @@ inline UiModel dn_build_ui_model_from_inputs(const UiModelInputs& in) {
     m.config.urlText = "192.168.4.1";
     m.config.stepText = "3. Setup & save";
     m.config.hintText = "Restart to apply";
+
+    m.bootFailure.title = "Network init failed";
+    m.bootFailure.detail = "Retry required";
+    m.bootFailure.hint = "Reboot to retry";
 
     m.animation.shakePhase = dn_shake_visual_phase(in.shakePhase);
     m.animation.shakeDirection = in.shakeDirection;

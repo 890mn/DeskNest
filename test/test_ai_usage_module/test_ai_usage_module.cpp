@@ -79,6 +79,17 @@ void test_ai_usage_module_uses_max_service_percent_without_total() {
     TEST_ASSERT_EQUAL_STRING("now", status.updatedAtText);
 }
 
+void test_ai_usage_module_parses_server_now_epoch() {
+    const time_t epoch = dn_parse_iso8601_epoch("2026-07-09T06:04:34+08:00");
+    TEST_ASSERT_EQUAL_INT64(1783548274LL, (long long)epoch);
+}
+
+void test_ai_usage_module_applies_server_now_plus8_correction() {
+    const time_t epoch = dn_parse_iso8601_epoch("2026-07-09T06:04:34+08:00");
+    const time_t corrected = dn_apply_server_now_boot_offset(epoch);
+    TEST_ASSERT_EQUAL_INT64(1783577074LL, (long long)corrected);
+}
+
 void setUp(void) {}
 void tearDown(void) {}
 
@@ -88,5 +99,7 @@ int main(int argc, char **argv) {
     RUN_TEST(test_ai_usage_module_clamps_percent);
     RUN_TEST(test_ai_usage_module_parses_cc_switch_cache);
     RUN_TEST(test_ai_usage_module_uses_max_service_percent_without_total);
+    RUN_TEST(test_ai_usage_module_parses_server_now_epoch);
+    RUN_TEST(test_ai_usage_module_applies_server_now_plus8_correction);
     return UNITY_END();
 }

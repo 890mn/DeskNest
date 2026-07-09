@@ -56,7 +56,7 @@ UIPage StateMachine::prevLandscape(UIPage p) {
 // ============================================================================
 
 void StateMachine::begin() {
-    _s.system        = SYSTEM_ACTIVE;
+    _s.system        = SYSTEM_BOOT;
     _s.face_state    = FACE_STATE_UP;        // 显式：开机默认 face_up
     _s.orientation   = ORIENTATION_PORTRAIT;
     _s.page          = PAGE_PORTRAIT_OVERVIEW;
@@ -64,7 +64,7 @@ void StateMachine::begin() {
     _s.lastInputMs   = millis();
     _temp_unlock_expire_ms = 0;
 
-    Serial.println("[D][STATE] begin → FACE_UP / ACTIVE / PORTRAIT / OVERVIEW");
+    Serial.println("[D][STATE] begin → FACE_UP / BOOT / PORTRAIT / OVERVIEW");
 }
 
 // ============================================================================
