@@ -74,6 +74,30 @@ void test_ui_model_maps_shake_animation() {
     TEST_ASSERT_EQUAL_UINT8(70, model.animation.shakeProgressPct);
 }
 
+void test_home_focus_prioritizes_ai_risk_over_life() {
+    AIUsageStatus ai = {};
+    ai.totalPercent = 82;
+    UiHomeFocusProps focus = dn_resolve_home_focus(ai, true);
+    TEST_ASSERT_EQUAL(HOME_FOCUS_AI_RISK, focus.kind);
+    TEST_ASSERT_TRUE(focus.actionable);
+}
+
+void test_home_focus_uses_life_reminder_when_ai_is_normal() {
+    AIUsageStatus ai = {};
+    ai.totalPercent = 42;
+    UiHomeFocusProps focus = dn_resolve_home_focus(ai, true);
+    TEST_ASSERT_EQUAL(HOME_FOCUS_LIFE_REMINDER, focus.kind);
+    TEST_ASSERT_EQUAL_UINT8(60, focus.priority);
+}
+
+void test_home_focus_falls_back_to_default_summary() {
+    AIUsageStatus ai = {};
+    ai.totalPercent = 42;
+    UiHomeFocusProps focus = dn_resolve_home_focus(ai, false);
+    TEST_ASSERT_EQUAL(HOME_FOCUS_DEFAULT, focus.kind);
+    TEST_ASSERT_FALSE(focus.actionable);
+}
+
 void setUp(void) {}
 void tearDown(void) {}
 
@@ -82,6 +106,8 @@ int main(int argc, char **argv) {
     RUN_TEST(test_ui_model_maps_overview_sensor_values);
     RUN_TEST(test_ui_model_marks_face_down_as_sleeping_special_page);
     RUN_TEST(test_ui_model_maps_shake_animation);
+    RUN_TEST(test_home_focus_prioritizes_ai_risk_over_life);
+    RUN_TEST(test_home_focus_uses_life_reminder_when_ai_is_normal);
+    RUN_TEST(test_home_focus_falls_back_to_default_summary);
     return UNITY_END();
 }
-

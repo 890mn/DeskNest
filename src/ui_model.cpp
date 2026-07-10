@@ -74,6 +74,7 @@ UiModel dn_build_ui_model() {
     model.aiUsage.serverNow = aiStatus.serverNow;
     model.aiUsage.nextRefreshInSec = aiStatus.nextRefreshInSec;
     model.overview.aiTotalPercent = aiStatus.totalPercent;
+    model.homeFocus = dn_resolve_home_focus(aiStatus, in.dailyChoicePending);
     model.overview.aiStatusText = aiStatus.fromCache ? "cache" : "demo";
     model.overview.updatedAtText = aiStatus.updatedAtText;
     const char* net_time = boot_active ? "" : dn_ai_usage_time_text();

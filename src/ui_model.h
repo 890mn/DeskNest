@@ -128,6 +128,23 @@ struct UiUsageItemProps {
     const char* weekExpireAt = "";
 };
 
+// Home is intentionally a small decision surface: one primary focus item,
+// with the renderer free to place it in the larger (3:2) card.
+enum HomeFocusKind : uint8_t {
+    HOME_FOCUS_DEFAULT = 0,
+    HOME_FOCUS_LIFE_REMINDER,
+    HOME_FOCUS_AI_RISK,
+};
+
+struct UiHomeFocusProps {
+    HomeFocusKind kind = HOME_FOCUS_DEFAULT;
+    const char* title = "DeskNest";
+    const char* detail = "今日状态已准备好";
+    const char* actionLabel = "查看";
+    uint8_t priority = 0;
+    bool actionable = false;
+};
+
 struct UiCodexResetProps {
     const char* name = "";
     const char* expireAt = "";
@@ -276,6 +293,7 @@ struct UiModel {
     UiStatusProps status;
 
     UiOverviewProps overview;
+    UiHomeFocusProps homeFocus;
     UiAiUsageProps aiUsage;
     UiMenuProps menu;
     UiEnvironmentProps environment;
@@ -305,6 +323,10 @@ struct UiModelInputs {
     bool batteryValid = false;
     uint8_t batteryPercent = 0;
     bool charging = false;
+
+    // Reserved for the Daily Choice sync flow. Keeping this input optional
+    // lets the home resolver ship before the persistence/API is implemented.
+    bool dailyChoicePending = false;
 
     ShakePhase shakePhase = SHAKE_PHASE_IDLE;
     int8_t shakeDirection = 0;
@@ -404,6 +426,36 @@ inline UiCustomCardProps dn_custom_card(const char* label,
     return card;
 }
 
+inline UiHomeFocusProps dn_resolve_home_focus(const AIUsageStatus& ai,
+                                              bool dailyChoicePending) {
+    UiHomeFocusProps out;
+    // An explicit warning wins over the aggregate percentage: it may carry
+    // source/cache/network context that a percentage alone cannot express.
+    if (ai.warningText && ai.warningText[0] != '\0') {
+        out.kind = HOME_FOCUS_AI_RISK;
+        out.title = "AI 用量需要关注";
+        out.detail = ai.warningText;
+        out.actionLabel = "查看 AI";
+        out.priority = 100;
+        out.actionable = true;
+    } else if (ai.totalPercent >= 80) {
+        out.kind = HOME_FOCUS_AI_RISK;
+        out.title = "AI 用量偏高";
+        out.detail = "额度接近上限，建议查看详情";
+        out.actionLabel = "查看 AI";
+        out.priority = 90;
+        out.actionable = true;
+    } else if (dailyChoicePending) {
+        out.kind = HOME_FOCUS_LIFE_REMINDER;
+        out.title = "今天吃什么？";
+        out.detail = "还没有决定今天的选择";
+        out.actionLabel = "去选择";
+        out.priority = 60;
+        out.actionable = true;
+    }
+    return out;
+}
+
 inline UiModel dn_build_ui_model_from_inputs(const UiModelInputs& in) {
     UiModel m = {};
     const StateSnapshot& s = in.state;
@@ -475,6 +527,8 @@ inline UiModel dn_build_ui_model_from_inputs(const UiModelInputs& in) {
     m.aiUsage.serverNow = aiStatus.serverNow;
     m.aiUsage.nextRefreshInSec = aiStatus.nextRefreshInSec;
     m.overview.aiTotalPercent = aiStatus.totalPercent;
+
+    m.homeFocus = dn_resolve_home_focus(aiStatus, in.dailyChoicePending);
 
     EnvironmentInput envIn;
     envIn.valid = in.temperatureValid;

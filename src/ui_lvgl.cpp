@@ -732,40 +732,38 @@ static void build_overview() {
     if (po.built) return;
     lv_obj_t* root = make_page_root(PAGE_PORTRAIT_OVERVIEW);
 
+    // 3:2 home composition: a single dominant focus card and a compact support card.
     lv_obj_t* top = make_row(root, 20, 8);
     po.labels[0] = make_label(top, &sty_dim16);
     lv_obj_set_flex_grow(po.labels[0], 1);
 
-    lv_obj_t* hero = make_row(root, 30, 7);
-    lv_obj_t* accent = lv_obj_create(hero);
-    lv_obj_remove_style_all(accent);
-    lv_obj_set_size(accent, 4, 25);
-    lv_obj_set_style_bg_color(accent, lv_color_hex(C_BRAND), 0);
-    lv_obj_set_style_bg_opa(accent, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(accent, 1, 0);
-    po.labels[1] = make_label(hero, &sty_text24);
-    po.labels[2] = make_label(hero, &sty_label16, "C");
-
-    lv_obj_t* stats = make_row(root, 20, 13);
-    for (int i = 0; i < 3; ++i) po.labels[3 + i] = make_label(stats, &sty_text16, "--");
+    lv_obj_t* focus = lv_obj_create(root);
+    lv_obj_set_size(focus, 220, 136);
+    lv_obj_add_style(focus, &sty_card, 0);
+    lv_obj_set_style_pad_all(focus, 10, 0);
+    lv_obj_set_flex_flow(focus, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(focus, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_gap(focus, 6, 0);
+    lv_obj_t* focus_head = make_row(focus, 20, 6);
+    po.labels[1] = make_label(focus_head, &sty_brand16, "TODAY");
+    po.labels[2] = make_label(focus_head, &sty_dim16, "FOCUS");
+    po.labels[3] = make_label(focus, &sty_text24, "Ready");
+    lv_obj_set_width(po.labels[3], 198);
+    po.labels[4] = make_label(focus, &sty_text16, "");
+    lv_obj_set_width(po.labels[4], 198);
+    po.labels[5] = make_label(focus, &sty_dim16, "Tap to explore  >");
+    lv_obj_set_width(po.labels[5], 198);
 
     lv_obj_t* card = lv_obj_create(root);
-    lv_obj_set_size(card, 220, 54);
+    lv_obj_set_size(card, 220, 84);
     lv_obj_add_style(card, &sty_card, 0);
     lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(card, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
     lv_obj_set_style_pad_gap(card, 5, 0);
-    make_label(card, &sty_label16, "AI Left");
+    make_label(card, &sty_label16, "AI USAGE");
     make_track(card, 200, 8, &po.bars[0]);
-    po.labels[6] = make_label(card, &sty_dim16);
-
-    lv_obj_t* nudge = lv_obj_create(root);
-    lv_obj_set_size(nudge, 220, 28);
-    lv_obj_add_style(nudge, &sty_card, 0);
-    lv_obj_set_style_border_side(nudge, LV_BORDER_SIDE_LEFT, 0);
-    lv_obj_set_style_border_width(nudge, 3, 0);
-    lv_obj_set_style_border_color(nudge, lv_color_hex(C_BRAND), 0);
-    po.labels[7] = make_label(nudge, &sty_text16);
+    po.labels[6] = make_label(card, &sty_text16);
+    po.labels[7] = make_label(card, &sty_dim16);
 
     po.built = true;
 }
@@ -774,34 +772,21 @@ static void update_overview(const UiModel& m) {
     PageObjects& po = page_objects(PAGE_PORTRAIT_OVERVIEW);
     char buf[48];
 
-    snprintf(buf, sizeof(buf), "%s | %s",
+    snprintf(buf, sizeof(buf), "%s  |  %s",
              m.overview.timeText[0] ? m.overview.timeText : "--:--",
              m.overview.suggestionText[0] ? m.overview.suggestionText : "Ready");
     set_text(po.labels[0], buf);
 
-    snprintf(buf, sizeof(buf), m.overview.environmentValid ? "%.1f" : "--",
-             m.overview.temperatureC);
-    set_text(po.labels[1], buf);
-
-    snprintf(buf, sizeof(buf), m.overview.environmentValid ? "Hum %.0f%%" : "Hum --",
-             m.overview.humidityPct);
-    set_text(po.labels[3], buf);
-
-    snprintf(buf, sizeof(buf), "Lux %u", (unsigned)m.overview.lux);
-    set_text(po.labels[4], buf);
-
-    if (m.status.batteryValid) snprintf(buf, sizeof(buf), "Bat %u%%", (unsigned)m.status.batteryPercent);
-    else snprintf(buf, sizeof(buf), "Bat USB");
-    set_text(po.labels[5], buf);
+    set_text(po.labels[1], "TODAY");
+    set_text(po.labels[2], "FOCUS");
+    set_text(po.labels[3], m.homeFocus.title[0] ? m.homeFocus.title : "Ready");
+    set_text(po.labels[4], m.homeFocus.detail[0] ? m.homeFocus.detail : "Nothing needs your attention");
 
     set_bar(po.bars[0], m.overview.aiTotalPercent, 200);
 
-    snprintf(buf, sizeof(buf), "%u%% | %s",
-             (unsigned)m.overview.aiTotalPercent,
-             m.aiUsage.updatedAtText[0] ? m.aiUsage.updatedAtText : "cached");
+    snprintf(buf, sizeof(buf), "%u%%", (unsigned)m.overview.aiTotalPercent);
     set_text(po.labels[6], buf);
-
-    snprintf(buf, sizeof(buf), "%s >", m.overview.messageText[0] ? m.overview.messageText : "Focus ready");
+    snprintf(buf, sizeof(buf), "%s", m.aiUsage.updatedAtText[0] ? m.aiUsage.updatedAtText : "cached");
     set_text(po.labels[7], buf);
 }
 
