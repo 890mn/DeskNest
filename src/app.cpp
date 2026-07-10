@@ -16,6 +16,7 @@
 #include "buttons.h"
 #include "ai_usage_module.h"
 #include "boot_splash.h"
+#include "desk_remote_config.h"
 
 #include <Arduino.h>
 #include <esp_log.h>
@@ -201,10 +202,12 @@ void boot_remote_task(void*) {
     boot_remote_publish(status);
 
     dn_ai_usage_service_begin();
+    dn_desk_remote_config_begin();
 
     bool boot_complete = false;
     while (true) {
         dn_ai_usage_service_tick();
+        dn_desk_remote_config_tick();
         // Keep this task alive as the sole owner of AI network/cache mutation;
         // the main loop only consumes read-only snapshots.
         if (boot_complete) {

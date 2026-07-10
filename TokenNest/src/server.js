@@ -14,6 +14,7 @@ import { tn_aggregate } from './sources/aggregator.js';
 import { tn_create_status_route } from './routes/status.js';
 import { tn_create_usage_route } from './routes/usage.js';
 import { tn_create_health_route } from './routes/health.js';
+import { tn_create_desknest_routes } from './routes/desknest.js';
 
 const log = tn_logger('main');
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -32,6 +33,7 @@ const main = async () => {
     log.info('sources started (background)');
 
     const app = express();
+    app.use(express.json({ limit: '32kb' }));
     app.use((req, _res, next) => {
         log.debug(`${req.method} ${req.path}`);
         next();
@@ -45,14 +47,21 @@ const main = async () => {
         cacheDir: config.paths.cacheDir,
         staleThresholdSec: config.staleThresholdSec,
     });
+    const deskRoutes = tn_create_desknest_routes({
+        configPath: path.join(ROOT, 'config', 'desknest.json'),
+        getAggregate,
+    });
 
     app.get('/status.json', tn_create_status_route({ getAggregate, staleThresholdSec: config.staleThresholdSec, sources }));
     app.get('/api/usage', tn_create_usage_route({ getAggregate }));
     app.get('/healthz', tn_create_health_route({ sources, staleThresholdSec: config.staleThresholdSec }));
+    app.get('/api/desknest', deskRoutes.get);
+    app.put('/api/desknest', deskRoutes.put);
+    app.use('/desk', express.static(path.join(ROOT, 'web')));
     app.get('/', (_req, res) => res.json({
         service: 'TokenNest',
         version: '0.1.0',
-        endpoints: ['/status.json', '/api/usage', '/healthz'],
+        endpoints: ['/status.json', '/api/usage', '/healthz', '/api/desknest', '/desk'],
     }));
 
     const server = app.listen(config.server.port, config.server.host, () => {

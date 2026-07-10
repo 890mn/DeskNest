@@ -727,15 +727,21 @@ static void boot_overlay_build() {
     lv_obj_set_style_radius(s_boot.progress_fill, 2, 0);
 
     s_boot.progress_head = lv_obj_create(s_boot.root);
-    lv_obj_add_style(s_boot.progress_head, &sty_card, 0);
+    // This marker must be an opaque solid object. Reusing the card style here
+    // left the underlying progress rail visible through its padded region.
+    plain(s_boot.progress_head);
     lv_obj_set_size(s_boot.progress_head, 38, 20);
     lv_obj_set_style_radius(s_boot.progress_head, 10, 0);
     lv_obj_set_style_bg_color(s_boot.progress_head, lv_color_hex(C_BOOT), 0);
+    lv_obj_set_style_bg_opa(s_boot.progress_head, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(s_boot.progress_head, 0, 0);
+    lv_obj_set_style_pad_all(s_boot.progress_head, 0, 0);
     lv_obj_set_pos(s_boot.progress_head, 10, 258);
 
     s_boot.progress_label = make_label(s_boot.progress_head, &sty_ascii14, "K10");
     lv_obj_center(s_boot.progress_label);
     lv_obj_set_style_text_color(s_boot.progress_label, lv_color_hex(C_BG), 0);
+    lv_obj_move_foreground(s_boot.progress_head);
 
     lv_obj_add_flag(s_boot.root, LV_OBJ_FLAG_HIDDEN);
 }

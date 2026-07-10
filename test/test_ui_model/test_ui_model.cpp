@@ -98,6 +98,15 @@ void test_home_focus_falls_back_to_default_summary() {
     TEST_ASSERT_FALSE(focus.actionable);
 }
 
+void test_home_focus_honors_manual_life_module_selection() {
+    UiModelInputs in = {};
+    in.state = baseSnapshot();
+    in.state.settingsValues[0] = 2;
+
+    UiModel model = dn_build_ui_model_from_inputs(in);
+    TEST_ASSERT_EQUAL(HOME_FOCUS_LIFE_REMINDER, model.homeFocus.kind);
+}
+
 void setUp(void) {}
 void tearDown(void) {}
 
@@ -109,5 +118,6 @@ int main(int argc, char **argv) {
     RUN_TEST(test_home_focus_prioritizes_ai_risk_over_life);
     RUN_TEST(test_home_focus_uses_life_reminder_when_ai_is_normal);
     RUN_TEST(test_home_focus_falls_back_to_default_summary);
+    RUN_TEST(test_home_focus_honors_manual_life_module_selection);
     return UNITY_END();
 }

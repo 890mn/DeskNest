@@ -5,4 +5,5 @@ tmp/
 
 config/tokennest.yaml
 config/minimax.json
+config/desknest.json
 .env

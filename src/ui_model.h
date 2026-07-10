@@ -17,6 +17,7 @@
 #include "ai_usage_module.h"
 #include "focus_module.h"
 #include "settings_module.h"
+#include "desk_remote_config.h"
 
 #include <stdint.h>
 
@@ -531,6 +532,31 @@ inline UiModel dn_build_ui_model_from_inputs(const UiModelInputs& in) {
     m.overview.aiTotalPercent = aiStatus.totalPercent;
 
     m.homeFocus = dn_resolve_home_focus(aiStatus, in.dailyChoicePending);
+    switch (s.settingsValues[0]) {
+        case 1:
+            m.homeFocus.kind = HOME_FOCUS_AI_RISK;
+            m.homeFocus.title = "AI usage";
+            m.homeFocus.detail = "Review available windows";
+            m.homeFocus.actionLabel = "Open AI";
+            m.homeFocus.actionable = true;
+            break;
+        case 2:
+            m.homeFocus.kind = HOME_FOCUS_LIFE_REMINDER;
+            m.homeFocus.title = "Today choice";
+            m.homeFocus.detail = "Choose what to eat today";
+            m.homeFocus.actionLabel = "Open menu";
+            m.homeFocus.actionable = true;
+            break;
+        case 3:
+            m.homeFocus.kind = HOME_FOCUS_DEFAULT;
+            m.homeFocus.title = "DeskNest";
+            m.homeFocus.detail = "Keep one space clear";
+            m.homeFocus.actionLabel = "";
+            m.homeFocus.actionable = false;
+            break;
+        default:
+            break;
+    }
 
     EnvironmentInput envIn;
     envIn.valid = in.temperatureValid;
@@ -643,6 +669,24 @@ inline UiModel dn_build_ui_model_from_inputs(const UiModelInputs& in) {
     }
     m.menu.groupCount = 3;
     m.menu.diceHint = "A pick  B save";
+
+    // The desktop editor is optional. A valid TokenNest payload replaces the
+    // built-in sample without changing the renderer contract.
+    const DeskRemoteConfig& desk = dn_desk_remote_config();
+    if (desk.ready) {
+        m.menu.ask = desk.today;
+        m.menu.lastMeal = desk.yesterday;
+        m.menu.groupCount = 1;
+        auto& remote = m.menu.groups[0];
+        remote.name = "";
+        remote.candidateCount = 5;
+        for (uint8_t i = 0; i < 5; ++i) {
+            remote.candidates[i].name = desk.items[i].name;
+            remote.candidates[i].price = desk.items[i].price;
+            remote.candidates[i].score = desk.items[i].score;
+            remote.candidates[i].active = desk.items[i].active;
+        }
+    }
 
     return m;
 }

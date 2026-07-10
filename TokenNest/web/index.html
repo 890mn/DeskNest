@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>DeskNest 控制台</title>
+  <style>
+    :root{--bg:#0f1419;--card:#1a2128;--line:#2a3447;--text:#ece8dc;--muted:#8b95a8;--brand:#9cb89b;--sand:#d4b896;--warn:#c97c7c}*{box-sizing:border-box}body{margin:0;background:#0b1015;color:var(--text);font:14px system-ui,"Microsoft YaHei",sans-serif}main{max-width:980px;margin:auto;padding:32px 20px 56px}header{display:flex;align-items:end;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:18px;margin-bottom:18px}h1{margin:0;font-size:25px}header p,.hint{color:var(--muted);margin:6px 0 0}.badge{color:var(--brand);font-size:12px}.grid{display:grid;grid-template-columns:1.2fr .8fr;gap:16px}.card{background:var(--card);border:1px solid var(--line);border-radius:9px;padding:16px}.card h2{font-size:16px;margin:0 0 14px;color:var(--brand)}label{display:block;color:var(--muted);font-size:12px}input,select{width:100%;margin:6px 0 12px;background:#10161c;border:1px solid var(--line);border-radius:5px;color:var(--text);padding:9px;font:inherit}table{width:100%;border-collapse:collapse}th{text-align:left;color:var(--muted);font-weight:400;font-size:12px;padding:0 4px 7px}td{padding:3px 4px}td input{margin:0;padding:7px;min-width:0}.check{width:17px;height:17px;accent-color:var(--brand)}button{border:0;border-radius:6px;padding:10px 13px;background:var(--brand);color:#10161c;font-weight:700;cursor:pointer}.secondary{background:#27313b;color:var(--text)}.actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}.usage{display:grid;gap:8px}.usage div{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line)}.usage span{color:var(--muted)}#notice{min-height:20px;color:var(--sand);margin-top:12px}@media(max-width:720px){.grid{grid-template-columns:1fr}main{padding:20px 12px}header{align-items:start;flex-direction:column}}
+  </style>
+</head>
+<body><main>
+  <header><div><h1>DeskNest 控制台</h1><p>今天吃什么  首页模块  手势和 AI 显示配置</p></div><div class="badge" id="connection">正在连接</div></header>
+  <div class="grid"><section class="card"><h2>今天吃什么</h2>
+    <label>今天<input id="today" maxlength="48"></label><label>昨天<input id="yesterday" maxlength="48"></label>
+    <table><thead><tr><th>推荐</th><th>菜名</th><th>价格</th><th>评分</th></tr></thead><tbody id="items"></tbody></table>
+  </section>
+  <section class="card"><h2>首页与交互</h2>
+    <label>首页模块<select id="homeMode"><option value="auto">自动</option><option value="ai">AI优先</option><option value="life">生活优先</option><option value="quiet">极简</option></select></label>
+    <label>手势确认<select id="gestureConfirm"><option value="true">开启</option><option value="false">关闭</option></select></label>
+    <label>界面主题<select id="theme"><option value="dark">深色</option><option value="soft">柔和</option></select></label>
+    <label>AI 提醒阈值<input id="aiWarningPercent" type="number" min="50" max="100"></label>
+  </section>
+  <section class="card"><h2>AI 状态</h2><div id="usage" class="usage"><div><span>加载中</span><b>--</b></div></div><p class="hint">AI 密钥不会在网页中显示或修改。TokenNest 继续通过本地配置文件保管密钥。</p></section>
+  <section class="card"><h2>保存</h2><p class="hint">保存后电脑端配置立即生效。板端同步接口将在下一轮固件接入后读取同一份配置。</p><div class="actions"><button class="secondary" id="reload">重新读取</button><button id="save">保存配置</button></div><div id="notice"></div></section>
+  </div>
+</main><script>
+  const $=id=>document.getElementById(id);let data;
+  function itemRow(item,index){return `<tr><td><input class="check active" data-i="${index}" type="radio" name="active" ${item.active?'checked':''}></td><td><input class="name" data-i="${index}" value="${item.name}"></td><td><input class="price" data-i="${index}" inputmode="decimal" value="${item.price}"></td><td><input class="score" data-i="${index}" type="number" min="0" max="100" value="${item.score}"></td></tr>`}
+  function usageView(usage){const c=usage?.chatgpt?.primaryPercent??'--',m=usage?.minimax?.primaryPercent??'--';$('usage').innerHTML=`<div><span>ChatGPT 5h</span><b>${c}%</b></div><div><span>MiniMax 5h</span><b>${m}%</b></div><div><span>同步状态</span><b>${usage?.warningText||'正常'}</b></div>`}
+  function render(next){data=next;$('today').value=data.menu.today;$('yesterday').value=data.menu.yesterday;$('items').innerHTML=data.menu.items.map(itemRow).join('');$('homeMode').value=data.settings.homeMode;$('gestureConfirm').value=String(data.settings.gestureConfirm);$('theme').value=data.settings.theme;$('aiWarningPercent').value=data.settings.aiWarningPercent;usageView(data.usage);$('connection').textContent='已连接 TokenNest'}
+  async function load(){try{const r=await fetch('/api/desknest');if(!r.ok)throw Error();render(await r.json());$('notice').textContent=''}catch{$('connection').textContent='连接失败';$('notice').textContent='无法读取 TokenNest 配置'}}
+  function collect(){const items=[...document.querySelectorAll('#items tr')].map((row,i)=>({name:row.querySelector('.name').value,price:row.querySelector('.price').value,score:+row.querySelector('.score').value,active:row.querySelector('.active').checked}));return{menu:{today:$('today').value,yesterday:$('yesterday').value,items},settings:{homeMode:$('homeMode').value,gestureConfirm:$('gestureConfirm').value==='true',theme:$('theme').value,aiWarningPercent:+$('aiWarningPercent').value}}}
+  $('save').onclick=async()=>{try{const r=await fetch('/api/desknest',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(collect())});if(!r.ok)throw Error();const saved=await r.json();render({...saved,usage:data.usage});$('notice').textContent='已保存'}catch{$('notice').textContent='保存失败'}};$('reload').onclick=load;load();
+</script></body></html>
