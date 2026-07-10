@@ -18,5 +18,8 @@ LV_FONT_DECLARE(lv_font_16);
 
 // Font 14px - for ASCII/symbols (smaller text)
 LV_FONT_DECLARE(lv_font_14);
+LV_FONT_DECLARE(lv_font_14_punct);
+LV_FONT_DECLARE(lv_font_16_punct);
+LV_FONT_DECLARE(lv_font_24_punct);
 
 #endif // DESKNEST_FONTS_H

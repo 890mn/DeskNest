@@ -126,15 +126,24 @@ private:
 };
 
 static const lv_font_t* font_cn_body() {
-    return &lv_font_16;
+    static lv_font_t font = lv_font_16;
+    static bool ready = false;
+    if (!ready) { font.fallback = &lv_font_16_punct; ready = true; }
+    return &font;
 }
 
 static const lv_font_t* font_cn_title() {
-    return &lv_font_24;
+    static lv_font_t font = lv_font_24;
+    static bool ready = false;
+    if (!ready) { font.fallback = &lv_font_24_punct; ready = true; }
+    return &font;
 }
 
 static const lv_font_t* font_ascii_body() {
-    return &lv_font_14;
+    static lv_font_t font = lv_font_14;
+    static bool ready = false;
+    if (!ready) { font.fallback = &lv_font_14_punct; ready = true; }
+    return &font;
 }
 
 static const lv_font_t* font_symbol() {
