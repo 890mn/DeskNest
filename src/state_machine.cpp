@@ -4,6 +4,7 @@
 
 #include "state_machine.h"
 #include "page_registry.h"
+#include "buttons.h"
 
 #include <Arduino.h>
 
@@ -11,7 +12,16 @@ namespace desknest {
 
 StateMachine g_state;
 
+// Hardware button implementation overrides this in firmware. Native tests
+// do not link buttons.cpp, so navigation remains enabled by default there.
+bool __attribute__((weak)) dn_gesture_confirm_held() { return true; }
+
 namespace {
+bool isNavigationGesture(GestureEvent g) {
+    return g == GESTURE_SHAKE_LEFT || g == GESTURE_SHAKE_RIGHT ||
+           g == GESTURE_ROTATE_PORTRAIT_TO_LANDSCAPE ||
+           g == GESTURE_ROTATE_LANDSCAPE_TO_PORTRAIT || g == GESTURE_TAP;
+}
 
 bool isLandscapePage(UIPage p) {
     return p == PAGE_LANDSCAPE_OVERVIEW ||
@@ -116,6 +126,7 @@ void StateMachine::updateGesture(GestureEvent g, uint32_t now_ms) {
     // 层级 gate：face_down 时所有手势输入都屏蔽
     if (_s.face_state == FACE_STATE_DOWN) return;
     if (g == GESTURE_NONE) return;
+    if (isNavigationGesture(g) && !dn_gesture_confirm_held()) return;
     applyGesture_(g, now_ms);
 }
 #endif
@@ -204,6 +215,10 @@ void StateMachine::applyButton_(ButtonEvent b, uint32_t now_ms) {
 
     switch (b) {
         case BUTTON_NEXT: {
+            if (DESKNEST_NAV_PREFERENCE == NAV_GESTURE_FIRST) {
+                Serial.println("[D][STATE] button NEXT ignored (gesture-first)");
+                break;
+            }
             if (_s.orientation == ORIENTATION_LANDSCAPE) {
                 _s.page = nextLandscape(_s.page);
             } else {
@@ -213,6 +228,10 @@ void StateMachine::applyButton_(ButtonEvent b, uint32_t now_ms) {
             break;
         }
         case BUTTON_PREV: {
+            if (DESKNEST_NAV_PREFERENCE == NAV_GESTURE_FIRST) {
+                Serial.println("[D][STATE] button PREV ignored (gesture-first)");
+                break;
+            }
             if (_s.orientation == ORIENTATION_LANDSCAPE) {
                 _s.page = prevLandscape(_s.page);
             } else {

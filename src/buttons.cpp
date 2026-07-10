@@ -23,6 +23,7 @@ struct Tracker {
 Tracker g_a;
 Tracker g_b;
 Tracker g_ab;
+bool g_gesture_confirm_held = false;
 
 // 长按阈值（短按不需要阈值：按下→释放，期间未触发 long 即为短按）
 constexpr uint32_t LONG_PRESS_MS     = 1000;   // 单键长按
@@ -73,6 +74,13 @@ ButtonEvent dn_button_poll(uint32_t now_ms) {
     const bool a_now = k10.buttonA->isPressed();
     const bool b_now = k10.buttonB->isPressed();
     const bool ab_now = a_now && b_now;
+#if DESKNEST_GESTURE_CONFIRM_BUTTON == GESTURE_CONFIRM_B
+    g_gesture_confirm_held = b_now;
+#elif DESKNEST_GESTURE_CONFIRM_BUTTON == GESTURE_CONFIRM_NONE
+    g_gesture_confirm_held = true;
+#else
+    g_gesture_confirm_held = a_now;
+#endif
 
     // A+B 组合（独立 tracker）
     e = tick_one(g_ab, ab_now, now_ms, AB_LONG_PRESS_MS,
@@ -102,5 +110,7 @@ ButtonEvent dn_button_poll(uint32_t now_ms) {
 
     return e;
 }
+
+bool dn_gesture_confirm_held() { return g_gesture_confirm_held; }
 
 }  // namespace desknest

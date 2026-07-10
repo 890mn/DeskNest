@@ -365,6 +365,25 @@ void test_gesture_shake_not_detected_below_threshold() {
     g_tuning.shake_threshold = defaults::G_SHAKE_THRESHOLD;
 }
 
+// Default tuning should accept a deliberate light shake (~0.35g), while the
+// existing full outbound/return/settle sequence remains required.
+void test_gesture_light_shake_detected() {
+    g_tuning.gesture_shake_enabled = 1;
+    g_tuning.shake_fire_on_outbound = 0;
+    GestureEngine g;
+    g.begin();
+    feedSettle(g, 0.0f, 1.0f, 0.0f);
+    const float seq[] = {+0.36f, -0.24f, 0.04f, 0.02f, 0.01f};
+    bool fired = false;
+    for (float ax : seq) {
+        const GestureEvent e = g.update(accel(ax, 0.0f, 0.0f), g_mock_millis);
+        g_mock_millis += 33;
+        if (e == GESTURE_SHAKE_LEFT || e == GESTURE_SHAKE_RIGHT) fired = true;
+    }
+    TEST_ASSERT_TRUE_MESSAGE(fired, "light shake did not trigger");
+    g_tuning.shake_fire_on_outbound = 0;
+}
+
 // ===========================================================================
 // 7) 摇动冷却：完成后 450ms 内第二次摇动被吞掉
 // ===========================================================================
@@ -411,6 +430,19 @@ void test_gesture_face_down_roost() {
         if (e == GESTURE_FACE_DOWN) { got = true; break; }
     }
     TEST_ASSERT_TRUE_MESSAGE(got, "FACE_DOWN not fired with az=0.95g for >800ms");
+}
+
+// A held face-down pose is edge-triggered, not a repeating timer.
+void test_gesture_face_down_single_trigger_while_held() {
+    GestureEngine g;
+    g.begin();
+    feedSettle(g, 0.0f, 1.0f, 0.0f);
+    int fired = 0;
+    for (int i = 0; i < 180; ++i) { // > cooldown + stable window
+        if (g.update(accel(0.0f, 0.0f, 0.95f), g_mock_millis) == GESTURE_FACE_DOWN) fired++;
+        g_mock_millis += 33;
+    }
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, fired, "held FACE_DOWN repeated after cooldown");
 }
 
 // ===========================================================================
@@ -751,8 +783,10 @@ int main(int /*argc*/, char** /*argv*/) {
     RUN_TEST(test_shake_calibration_ignores_unrelated_face_event);
     RUN_TEST(test_gesture_shake_not_detected_when_steady);
     RUN_TEST(test_gesture_shake_not_detected_below_threshold);
+    RUN_TEST(test_gesture_light_shake_detected);
     RUN_TEST(test_gesture_shake_cooldown_blocks_second);
     RUN_TEST(test_gesture_face_down_roost);
+    RUN_TEST(test_gesture_face_down_single_trigger_while_held);
     RUN_TEST(test_gesture_face_up_open);
     RUN_TEST(test_gesture_orientation_holds_in_dead_zone);
     RUN_TEST(test_gesture_tap_on_z_spike);

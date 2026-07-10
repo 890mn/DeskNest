@@ -113,6 +113,7 @@ struct GestureTuning {
     uint16_t shake_window_ms;         // 摇动峰值跟踪窗口（默认 200ms）
     uint16_t shake_cooldown_ms;       // 两次摇动最小间隔（默认 600ms）
     uint8_t  shake_invert;            // 方向反转（K10 BSP 坐标方向不一致时用）
+    uint8_t  shake_fire_on_outbound;  // test mode: emit on first outbound peak
 
     // Tap
     float    tap_z_high;              // 当前 az > 此值（默认 1.2g）
@@ -204,6 +205,11 @@ private:
     //   提为成员后 begin() 可以一并重置，校准 wizard 每步干净起步。
     uint32_t _face_down_since_ms = 0;
     uint32_t _face_up_since_ms   = 0;
+    // Face events are edge-triggered: holding a face-down/up pose must not
+    // emit repeated events after the cooldown expires.  Re-arm only after
+    // leaving the corresponding threshold zone.
+    bool     _face_down_armed    = true;
+    bool     _face_up_armed      = true;
     float    _tap_prev_gz        = 1.0f;
 
     OrientationState classifyOrientation_(float ax, float ay) const;

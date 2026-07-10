@@ -53,11 +53,22 @@ void test_face_down_and_face_up_restore_portrait_page() {
     TEST_ASSERT_EQUAL(PAGE_PORTRAIT_AI_USAGE, s.page);
 }
 
+void test_short_press_buttons_do_not_switch_pages_in_gesture_first_mode() {
+    g_state.updateButton(BUTTON_NEXT, g_mock_millis);
+    TEST_ASSERT_EQUAL(PAGE_PORTRAIT_OVERVIEW, g_state.snapshot().page);
+
+    g_state.updateGesture(GESTURE_SHAKE_RIGHT, g_mock_millis + 100);
+    TEST_ASSERT_EQUAL(PAGE_PORTRAIT_AI_USAGE, g_state.snapshot().page);
+
+    g_state.updateButton(BUTTON_PREV, g_mock_millis + 200);
+    TEST_ASSERT_EQUAL(PAGE_PORTRAIT_AI_USAGE, g_state.snapshot().page);
+}
+
 int main(int argc, char **argv) {
     UNITY_BEGIN();
     RUN_TEST(test_runtime_rotate_to_landscape_is_ignored_for_current_mvp);
     RUN_TEST(test_runtime_orientation_landscape_detection_is_ignored_for_current_mvp);
     RUN_TEST(test_face_down_and_face_up_restore_portrait_page);
+    RUN_TEST(test_short_press_buttons_do_not_switch_pages_in_gesture_first_mode);
     return UNITY_END();
 }
-

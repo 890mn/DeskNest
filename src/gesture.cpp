@@ -29,19 +29,24 @@ GestureTuning g_tuning = {
     .rotate_stable_ms    = defaults::T_ROTATE_STABLE_MS,      // 400
     .rotate_cooldown_ms  = 1000,
     // 摇动
-    .shake_threshold     = 0.55f,                             // 自然手持甩动首峰
-    .shake_return_threshold = 0.35f,                          // 反向回拉峰值
-    .shake_settle_threshold = 0.16f,                          // 连续 3 帧进入此区间才提交
+    .shake_threshold     = defaults::G_SHAKE_THRESHOLD,                             // 自然手持甩动首峰
+    .shake_return_threshold = 0.20f,                          // 反向回拉峰值
+    .shake_settle_threshold = 0.14f,                          // 连续 3 帧进入此区间才提交
     .shake_window_ms     = 650,                               // 容纳甩出 + 回拉 + 回稳
     .shake_cooldown_ms   = 450,                               // 完整动作已回稳，可稍短
     .shake_invert        = 0,                                 // 0 = 约定 ax>0 → LEFT；1 = 反转
+#ifdef UNIT_TEST
+    .shake_fire_on_outbound = 0,                              // tests keep full round-trip semantics
+#else
+    .shake_fire_on_outbound = 1,                              // 临时产品模式：轻摇即触发
+#endif
     // Tap
     .tap_z_high          = 1.2f,
     .tap_z_low           = 1.1f,
     .tap_cooldown_ms     = 300,
 
     // 摇动手势屏蔽：默认关闭，wizard 进入时自动开
-    .gesture_shake_enabled = 0,
+    .gesture_shake_enabled = 1,
 
     // 输出
     .verbose             = 0,             // 默认安静
@@ -60,6 +65,8 @@ void GestureEngine::begin() {
     _peak_window_start_ms = 0;
     _face_down_since_ms   = 0;
     _face_up_since_ms     = 0;
+    _face_down_armed      = true;
+    _face_up_armed        = true;
     _tap_prev_gz          = 1.0f;
 
     _shake_phase          = SHAKE_PHASE_IDLE;
@@ -99,8 +106,16 @@ GestureEvent GestureEngine::detectShake_(float ax, uint32_t now_ms) {
     const float return_threshold = g_tuning.shake_return_threshold;
     const float settle_threshold = g_tuning.shake_settle_threshold;
 
+    const float motion_ax = _shake_baseline_valid ? (ax - _shake_baseline_ax) : 0.0f;
+
     if (_shake_phase != SHAKE_PHASE_IDLE &&
         now_ms - _shake_started_ms > g_tuning.shake_window_ms) {
+        Serial.printf("[D][GESTURE] shake timeout phase=%u elapsed=%lu motion=%+.3f axis_sign=%d "
+                      "return=%.3f settle=%.3f peak=%.3f\n",
+                      (unsigned)_shake_phase,
+                      (unsigned long)(now_ms - _shake_started_ms), motion_ax,
+                      (int)_shake_axis_sign, return_threshold, settle_threshold,
+                      _peak_abs_accel);
         _shake_phase = SHAKE_PHASE_IDLE;
         _shake_axis_sign = 0;
         _shake_direction = 0;
@@ -110,10 +125,9 @@ GestureEvent GestureEngine::detectShake_(float ax, uint32_t now_ms) {
     if (!_shake_baseline_valid) {
         _shake_baseline_ax = ax;
         _shake_baseline_valid = true;
+        Serial.printf("[D][GESTURE] shake baseline init ax=%+.3f\n", ax);
         return GESTURE_NONE;
     }
-
-    const float motion_ax = ax - _shake_baseline_ax;
 
     if (_shake_phase == SHAKE_PHASE_IDLE) {
         if (fabsf(motion_ax) < start_threshold) {
@@ -130,6 +144,21 @@ GestureEvent GestureEngine::detectShake_(float ax, uint32_t now_ms) {
         _shake_started_ms = now_ms;
         _shake_phase = SHAKE_PHASE_OUTBOUND;
         _peak_abs_accel = fabsf(motion_ax);
+        Serial.printf("[D][GESTURE] shake outbound sign=%d dir=%d motion=%+.3f threshold=%.3f\n",
+                      (int)_shake_axis_sign, (int)_shake_direction,
+                      motion_ax, start_threshold);
+        if (g_tuning.shake_fire_on_outbound) {
+            const GestureEvent event = _shake_direction > 0
+                ? GESTURE_SHAKE_LEFT : GESTURE_SHAKE_RIGHT;
+            Serial.printf("[D][GESTURE] shake fire_on_outbound event=%s\n",
+                          event == GESTURE_SHAKE_LEFT ? "SHAKE_LEFT" : "SHAKE_RIGHT");
+            _last_shake_ms = now_ms;
+            _shake_phase = SHAKE_PHASE_IDLE;
+            _shake_axis_sign = 0;
+            _shake_direction = 0;
+            _shake_settle_samples = 0;
+            return event;
+        }
         return GESTURE_NONE;
     }
 
@@ -139,6 +168,8 @@ GestureEvent GestureEngine::detectShake_(float ax, uint32_t now_ms) {
             (_shake_axis_sign < 0 && motion_ax >= return_threshold)) {
             _shake_phase = SHAKE_PHASE_RETURNING;
             _shake_settle_samples = 0;
+            Serial.printf("[D][GESTURE] shake returning motion=%+.3f peak=%.3f\n",
+                          motion_ax, _peak_abs_accel);
         }
         return GESTURE_NONE;
     }
@@ -187,25 +218,27 @@ GestureEvent GestureEngine::update(const AccelReading& acc, uint32_t now_ms) {
     // 2) 翻面检测（az > face_down_threshold 持续 face_down_stable_ms）
     if (az > g_tuning.face_down_threshold) {
         // 累计时间
-        if (_face_down_since_ms == 0) {
+        if (_face_down_armed && _face_down_since_ms == 0) {
             _face_down_since_ms = now_ms;
         }
-        if ((now_ms - _face_down_since_ms) >= g_tuning.face_down_stable_ms) {
+        if (_face_down_armed && (now_ms - _face_down_since_ms) >= g_tuning.face_down_stable_ms) {
             if (now_ms - _last_face_ms >= g_tuning.face_cooldown_ms) {
                 _last_face_ms = now_ms;
                 _face_down_since_ms = 0;
+                _face_down_armed = false;
                 return GESTURE_FACE_DOWN;
             }
         }
     } else if (az < g_tuning.face_up_threshold) {
         // 翻回
-        if (_face_up_since_ms == 0) {
+        if (_face_up_armed && _face_up_since_ms == 0) {
             _face_up_since_ms = now_ms;
         }
-        if ((now_ms - _face_up_since_ms) >= g_tuning.face_up_stable_ms) {
+        if (_face_up_armed && (now_ms - _face_up_since_ms) >= g_tuning.face_up_stable_ms) {
             if (now_ms - _last_face_ms >= g_tuning.face_cooldown_ms) {
                 _last_face_ms = now_ms;
                 _face_up_since_ms = 0;
+                _face_up_armed = false;
                 return GESTURE_FACE_UP_OPEN;
             }
         }
@@ -213,6 +246,10 @@ GestureEvent GestureEngine::update(const AccelReading& acc, uint32_t now_ms) {
         // 中性区：不重置 face_down/face_up 计时器 —— 它们各自的 if 分支
         // 会在 fire 时清零。这里留空。
     }
+    // Re-arm only after leaving each extreme zone; cooldown alone must not
+    // cause a held pose to emit repeated events.
+    if (az <= g_tuning.face_down_threshold) _face_down_armed = true;
+    if (az >= g_tuning.face_up_threshold) _face_up_armed = true;
 
     // 3) 旋转检测（X/Y 主轴，滞回 rotate_stable_ms）
     const OrientationState new_orient = classifyOrientation_(ax, ay);

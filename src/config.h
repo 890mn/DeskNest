@@ -150,6 +150,17 @@ enum NavPreference : uint8_t {
     NAV_GESTURE_FIRST,
     NAV_BOTH,
 };
+enum GestureConfirmButton : uint8_t { GESTURE_CONFIRM_NONE = 0, GESTURE_CONFIRM_A, GESTURE_CONFIRM_B };
+#ifndef DESKNEST_GESTURE_CONFIRM_BUTTON
+#define DESKNEST_GESTURE_CONFIRM_BUTTON GESTURE_CONFIRM_A
+#endif
+
+// Navigation takeover mode used while validating physical gestures.  The
+// gesture-first default keeps the two short-press buttons available for later
+// confirmation/shortcut assignments; long-press actions remain unaffected.
+#ifndef DESKNEST_NAV_PREFERENCE
+#define DESKNEST_NAV_PREFERENCE NAV_GESTURE_FIRST
+#endif
 
 // 旋转锁定
 enum RotationLock : uint8_t {
@@ -201,7 +212,7 @@ namespace defaults {
     // 因此 face-down 阈值用 +0.7、face-up 用 -0.7（与初版相反）
     constexpr float    G_FACE_DOWN_THRESHOLD    =  0.7f;
     constexpr float    G_FACE_UP_THRESHOLD      = -0.7f;
-    constexpr float    G_SHAKE_THRESHOLD        = 0.55f;
+      constexpr float    G_SHAKE_THRESHOLD        = 0.30f;
 
     // 告警阈值
     constexpr uint8_t  ALERT_ORANGE_PCT         = 50;

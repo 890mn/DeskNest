@@ -34,6 +34,27 @@ namespace {
 
 constexpr uint32_t HEARTBEAT_INTERVAL_MS = 1000;
 
+const char* gesture_event_name(GestureEvent event) {
+    switch (event) {
+        case GESTURE_SHAKE_LEFT: return "SHAKE_LEFT";
+        case GESTURE_SHAKE_RIGHT: return "SHAKE_RIGHT";
+        case GESTURE_ROTATE_PORTRAIT_TO_LANDSCAPE: return "ROTATE_TO_LANDSCAPE";
+        case GESTURE_ROTATE_LANDSCAPE_TO_PORTRAIT: return "ROTATE_TO_PORTRAIT";
+        case GESTURE_FACE_DOWN: return "FACE_DOWN";
+        case GESTURE_FACE_UP_OPEN: return "FACE_UP";
+        case GESTURE_TAP: return "TAP";
+        default: return "NONE";
+    }
+}
+
+const char* shake_phase_name(ShakePhase phase) {
+    switch (phase) {
+        case SHAKE_PHASE_OUTBOUND: return "OUTBOUND";
+        case SHAKE_PHASE_RETURNING: return "RETURNING";
+        default: return "IDLE";
+    }
+}
+
 enum BootInitPhase : uint8_t {
     BOOT_INIT_SENSORS = 0,
     BOOT_INIT_TUNING,
@@ -350,6 +371,19 @@ void dn_app_loop() {
     // 2) 手势（tuning REPL 可能用 pending feed 覆盖真实 accel 一帧）
     dn_tuning_take_feed(acc);   // 若有 pending feed 替换 acc；无则保留原值
     const GestureEvent g = g_gesture.update(acc, now);
+    // 事件级诊断：不打印 GESTURE_NONE，避免串口输出干扰传感器时序。
+    if (g != GESTURE_NONE) {
+        Serial.printf("[D][GESTURE] event=%s(%d) raw=(%+.3f,%+.3f,%+.3f) orient=%d "
+                      "shake_en=%u phase=%s dir=%d baseline=%+.3f motion=%+.3f\n",
+                      gesture_event_name(g), (int)g,
+                      acc.x, acc.y, acc.z,
+                      (int)g_gesture.orientation(),
+                      (unsigned)g_tuning.gesture_shake_enabled,
+                      shake_phase_name(g_gesture.shakePhase()),
+                      (int)g_gesture.shakeDirection(),
+                      g_gesture.shakeBaselineAx(),
+                      g_gesture.shakeMotionAx(acc.x));
+    }
 
     // 2.5) tuning 后处理：吃串口、recording 日志
     dn_tuning_post_step(now, acc, g);

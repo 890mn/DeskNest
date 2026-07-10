@@ -10,6 +10,7 @@
 <body>
 <header class="top"><h1>DeskNest · 手势调试台</h1><div class="status"><span id="dot" class="dot"></span><span id="conn">未连接</span></div></header>
 <main>
+<div class="panel" style="grid-column:1/-1;padding:10px"><b>Quick diagnostics</b> <button onclick="sendCommand('state')">state</button> <button onclick="sendCommand('show')">show</button> <button onclick="sendCommand('record')">record</button> <button onclick="sendCommand('stop')">stop</button> <button onclick="sendCommand('verbose 1')">verbose 1</button><span id="nav-mode" style="float:right;color:var(--cyan)">GESTURE_FIRST</span></div>
 <section>
   <div class="panel"><h2>三轴加速度 · 实时</h2><div class="cards">
     <div class="card"><div class="label">AX</div><div class="value" id="ax">--</div><span class="unit">g</span></div>
@@ -60,7 +61,8 @@ const paramDefs=[['shake','启动门槛','g'],['ret','反向门槛','g'],['settl
 function renderLog(id,items){$(id).innerHTML=(items||[]).slice(-60).reverse().map(x=>`<div class="row"><span class="time">${x.time}</span><span>${escapeHtml(x.text)}</span><span class="count">${x.count>1?'×'+x.count:''}</span></div>`).join('')}
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function render(d){$('dot').classList.toggle('on',d.connected);$('conn').textContent=d.connected?`已连接 ${d.serial_port}`:'串口未连接';let t=d.telemetry||{};for(let k of ['ax','ay','az','mag','base','motion'])$(k).textContent=fmt(t[k]);$('phase').textContent=t.phase||'--';$('direction').textContent=t.dir||'--';$('event').textContent=`event=${t.event||'--'} · orient=${t.orient||'--'}`;$('params').innerHTML=paramDefs.map(([k,n,u])=>`<div class="param"><span class="label">${n}</span><b>${t[k]??'--'} <small>${u}</small></b></div>`).join('');let liveShow=paramDefs.map(([k,n,u])=>`${k.padEnd(8)} = ${String(t[k]??'--').padEnd(7)} ${u}  ${n}`);$('show').textContent=(d.show?.length?d.show:liveShow).join('\n');renderLog('log-state',d.logs?.state);renderLog('log-input',d.logs?.input);renderLog('log-gesture',d.logs?.gesture);renderLog('log-other',[...(d.logs?.sensor||[]),...(d.logs?.other||[])]);}
-async function refresh(){try{let r=await fetch('/api/snapshot',{cache:'no-store'});render(await r.json())}catch(e){$('conn').textContent='服务断开'}}setInterval(refresh,50);refresh();
+async function sendCommand(command){await fetch('/api/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command})});}
+async function refresh(){try{let r=await fetch('/api/snapshot',{cache:'no-store'});let d=await r.json();render(d);if($('nav-mode'))$('nav-mode').textContent=d.nav_mode||'GESTURE_FIRST'}catch(e){$('conn').textContent='服务断开'}}setInterval(refresh,50);refresh();
 $('terminal').addEventListener('submit',async e=>{e.preventDefault();let input=$('command'),command=input.value.trim();if(!command)return;let r=await fetch('/api/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command})});if(r.ok)input.value='';});
 </script>
 </body></html>

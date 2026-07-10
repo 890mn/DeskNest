@@ -21,6 +21,7 @@ namespace desknest {
 
 // 主循环每帧调用一次；返回本帧待处理的事件（NONE = 无）
 ButtonEvent dn_button_poll(uint32_t now_ms);
+bool dn_gesture_confirm_held();
 
 }  // namespace desknest
 

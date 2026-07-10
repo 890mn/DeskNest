@@ -76,6 +76,7 @@ class DashboardState:
         self.connected = False
         self.serial_port = ""
         self.version = 0
+        self.nav_mode = "GESTURE_FIRST"
 
     def add_line(self, line: str) -> None:
         line = line.strip()
@@ -122,6 +123,7 @@ class DashboardState:
                 "show": list(self.show_lines),
                 "logs": {key: list(value.items) for key, value in self.logs.items()},
                 "version": self.version,
+                "nav_mode": self.nav_mode,
             }
 
 
@@ -133,6 +135,7 @@ class SerialBridge(threading.Thread):
         self.serial = None
         self.pending = deque()
         self.stop_event = threading.Event()
+        self.auto_record = False
 
     def send(self, command: str) -> None:
         self.pending.append(command.rstrip("\r\n"))
@@ -168,7 +171,10 @@ class SerialBridge(threading.Thread):
                         if "[D][BOOT] done" in line:
                             started = 0
                     if not initialized and (started == 0 or time.monotonic() - started > 13):
-                        for cmd in ("help", "show", "record"):
+                        commands = ["help", "show"]
+                        if self.auto_record:
+                            commands.append("record")
+                        for cmd in commands:
                             self.pending.append(cmd)
                         initialized = True
                     while self.pending:
@@ -242,11 +248,19 @@ def main():
     parser.add_argument("--port", type=int, default=8765, help="local HTTP port")
     parser.add_argument("--no-serial", action="store_true", help="UI preview without a device")
     parser.add_argument("--open", action="store_true", help="open the browser")
+    # Live telemetry is the primary diagnostic view.  Keep it on by default;
+    # --no-auto-record is useful when inspecting a quiet command/log stream.
+    parser.set_defaults(auto_record=True)
+    parser.add_argument("--auto-record", dest="auto_record", action="store_true",
+                        help="start telemetry automatically (default)")
+    parser.add_argument("--no-auto-record", dest="auto_record", action="store_false",
+                        help="do not start telemetry automatically")
     args = parser.parse_args()
 
     state = DashboardState()
     bridge = None if args.no_serial else SerialBridge(state, args.serial)
     if bridge:
+        bridge.auto_record = args.auto_record
         bridge.start()
     html_path = Path(__file__).with_name("gesture_dashboard.html")
     server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(state, bridge, html_path))

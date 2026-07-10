@@ -51,7 +51,7 @@ struct GestureStep {
     GestureEvent   expected;     // 这一步应触发的事件
     uint16_t       max_ms;       // 录制最长窗口（超时未触发就进 FEEDBACK）
     const char*    instruction;  // 给用户的中文提示
-    const char*    tunables[6];  // 此步可调的字段名
+    const char*    tunables[7];  // 此步可调的字段名
     uint8_t        num_tunables;
 };
 
@@ -84,13 +84,13 @@ static const GestureStep STEPS[] = {
       GESTURE_SHAKE_LEFT,
       2000,
       "向左甩出，再拉回并停稳；方向反了会自动修正",
-      { "shake", "shake_return", "shake_settle", "shake_window", "shake_cd", "shake_invert" }, 6 },
+      { "shake", "shake_return", "shake_settle", "shake_window", "shake_cd", "shake_invert", "shake_fire" }, 7 },
 
     { "shake_right",
       GESTURE_SHAKE_RIGHT,
       2000,
       "向右甩出，再拉回并停稳；用于复核左右方向",
-      { "shake", "shake_return", "shake_settle", "shake_window", "shake_cd", "shake_invert" }, 6 },
+      { "shake", "shake_return", "shake_settle", "shake_window", "shake_cd", "shake_invert", "shake_fire" }, 7 },
 
     { "tap",
       GESTURE_TAP,
@@ -191,6 +191,7 @@ static bool findField(const char* name, fieldref::Ref& ref) {
     if (!strcmp(name, "shake_settle")){ ref.kind = fieldref::F_FLOAT; ref.p.f = &g_tuning.shake_settle_threshold; return true; }
     if (!strcmp(name, "shake_window")){ ref.kind = fieldref::F_U16;   ref.p.u = &g_tuning.shake_window_ms;       return true; }
     if (!strcmp(name, "shake_invert")) { ref.kind = fieldref::F_U8;   ref.p.b = &g_tuning.shake_invert;          return true; }
+    if (!strcmp(name, "shake_fire")) { ref.kind = fieldref::F_U8;   ref.p.b = &g_tuning.shake_fire_on_outbound; return true; }
     if (!strcmp(name, "shake_en"))    { ref.kind = fieldref::F_U8;   ref.p.b = &g_tuning.gesture_shake_enabled;  return true; }
     if (!strcmp(name, "tap_high"))    { ref.kind = fieldref::F_FLOAT; ref.p.f = &g_tuning.tap_z_high;            return true; }
     if (!strcmp(name, "tap_low"))     { ref.kind = fieldref::F_FLOAT; ref.p.f = &g_tuning.tap_z_low;             return true; }
@@ -266,6 +267,7 @@ static void printShow() {
     Serial.printf("[D][SHOW] shake_en   = %u  (%s)\n",  g_tuning.gesture_shake_enabled,
                    g_tuning.gesture_shake_enabled ? "physical shake ON (wizard)"
                                                  : "physical shake OFF (A/B buttons take over)");
+    Serial.printf("[D][SHOW] shake_fire = %u  (outbound trigger)\n", g_tuning.shake_fire_on_outbound);
     Serial.printf("[D][SHOW] tap_high   = %+.3f g\n",  g_tuning.tap_z_high);
     Serial.printf("[D][SHOW] tap_low    = %+.3f g\n",  g_tuning.tap_z_low);
     Serial.printf("[D][SHOW] tap_cd     = %u\n",        g_tuning.tap_cooldown_ms);
@@ -339,11 +341,12 @@ static void cmdReset() {
     g_tuning.rotate_stable_ms    = defaults::T_ROTATE_STABLE_MS;
     g_tuning.rotate_cooldown_ms  = 1000;
     g_tuning.shake_threshold     = defaults::G_SHAKE_THRESHOLD;
-    g_tuning.shake_return_threshold = 0.35f;
-    g_tuning.shake_settle_threshold = 0.16f;
+    g_tuning.shake_return_threshold = 0.20f;
+    g_tuning.shake_settle_threshold = 0.14f;
     g_tuning.shake_window_ms     = 650;
     g_tuning.shake_cooldown_ms   = defaults::T_SHAKE_COOLDOWN_MS;
     g_tuning.shake_invert        = 0;
+    g_tuning.shake_fire_on_outbound = 1;
     g_tuning.gesture_shake_enabled = 0;   // 默认屏蔽物理摇动，A/B 接管
     g_tuning.tap_z_high          = 1.2f;
     g_tuning.tap_z_low           = 1.1f;
