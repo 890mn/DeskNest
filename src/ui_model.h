@@ -69,6 +69,8 @@ struct UiHeaderProps {
     uint8_t pageCount = 0;
     bool showHeader = true;
     bool showPageDots = true;
+    bool gestureConfirmEnabled = true;
+    const char* gestureConfirmKey = "A";
 };
 
 struct UiFooterProps {
@@ -441,13 +443,13 @@ inline UiHomeFocusProps dn_resolve_home_focus(const AIUsageStatus& ai,
     } else if (ai.totalPercent >= 80) {
         out.kind = HOME_FOCUS_AI_RISK;
         out.title = "AI 用量偏高";
-        out.detail = "额度接近上限，建议查看详情";
+        out.detail = "额度接近上限, 建议查看详情";
         out.actionLabel = "查看 AI";
         out.priority = 90;
         out.actionable = true;
     } else if (dailyChoicePending) {
         out.kind = HOME_FOCUS_LIFE_REMINDER;
-        out.title = "今天吃什么？";
+        out.title = "今天吃什么?";
         out.detail = "还没有决定今天的选择";
         out.actionLabel = "去选择";
         out.priority = 60;

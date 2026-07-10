@@ -3,6 +3,7 @@
 
 #include "ui.h"
 #include "ai_icon_assets.h"
+#include "gesture_icon_assets.h"
 #include "boot_logo_asset.h"
 #include "config.h"
 #include "ui_model.h"
@@ -74,6 +75,8 @@ struct ChromeObjects {
     lv_obj_t* header = nullptr;
     lv_obj_t* title = nullptr;
     lv_obj_t* page = nullptr;
+    lv_obj_t* gesture_lock = nullptr;
+    lv_obj_t* status_group = nullptr;
     lv_obj_t* divider = nullptr;
     lv_obj_t* home = nullptr;
     lv_obj_t* pills[5] = {};
@@ -126,24 +129,27 @@ private:
 };
 
 static const lv_font_t* font_cn_body() {
-    static lv_font_t font = lv_font_16;
-    static bool ready = false;
-    if (!ready) { font.fallback = &lv_font_16_punct; ready = true; }
-    return &font;
+    return &lv_font_16_bold;
+}
+
+static const lv_font_t* font_cn_body_bold() {
+    return &lv_font_16_bold;
 }
 
 static const lv_font_t* font_cn_title() {
-    static lv_font_t font = lv_font_24;
-    static bool ready = false;
-    if (!ready) { font.fallback = &lv_font_24_punct; ready = true; }
-    return &font;
+    return &lv_font_24_bold;
+}
+
+static const lv_font_t* font_cn_title_bold() {
+    return &lv_font_24_bold;
 }
 
 static const lv_font_t* font_ascii_body() {
-    static lv_font_t font = lv_font_14;
-    static bool ready = false;
-    if (!ready) { font.fallback = &lv_font_14_punct; ready = true; }
-    return &font;
+    return &lv_font_14_bold;
+}
+
+static const lv_font_t* font_ascii_body_bold() {
+    return &lv_font_14_bold;
 }
 
 static const lv_font_t* font_symbol() {
@@ -517,7 +523,20 @@ static void chrome_build() {
     lv_obj_set_style_pad_hor(s_chrome.header, 8, 0);
 
     s_chrome.title = make_label(s_chrome.header, &sty_ascii14, "DeskNest");
-    s_chrome.page = make_label(s_chrome.header, &sty_symbol14, "");
+    lv_obj_set_width(s_chrome.title, 92);
+    s_chrome.status_group = lv_obj_create(s_chrome.header);
+    plain(s_chrome.status_group);
+    lv_obj_set_size(s_chrome.status_group, 80, HEADER_H);
+    lv_obj_set_flex_flow(s_chrome.status_group, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(s_chrome.status_group, LV_FLEX_ALIGN_END,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_gap(s_chrome.status_group, 2, 0);
+    s_chrome.gesture_lock = lv_img_create(s_chrome.status_group);
+    lv_obj_set_size(s_chrome.gesture_lock, 16, 16);
+    lv_img_set_src(s_chrome.gesture_lock, &dn_img_lock_16);
+    s_chrome.page = make_label(s_chrome.status_group, &sty_symbol14, "");
+    lv_obj_set_width(s_chrome.page, 60);
+    lv_obj_set_style_text_align(s_chrome.page, LV_TEXT_ALIGN_CENTER, 0);
 
     s_chrome.divider = lv_obj_create(s_scr);
     lv_obj_set_size(s_chrome.divider, SCREEN_W - 10, 1);
@@ -605,6 +624,16 @@ static void chrome_update(const UiModel& m) {
             break;
     }
     set_text(s_chrome.page, wifi_buf);
+
+    if (m.header.gestureConfirmEnabled) {
+        lv_img_set_src(s_chrome.gesture_lock, &dn_img_lock_16);
+        lv_obj_set_style_img_recolor(s_chrome.gesture_lock, lv_color_hex(C_SAND), 0);
+        lv_obj_set_style_img_recolor_opa(s_chrome.gesture_lock, LV_OPA_COVER, 0);
+    } else {
+        lv_img_set_src(s_chrome.gesture_lock, &dn_img_lock_open_16);
+        lv_obj_set_style_img_recolor(s_chrome.gesture_lock, lv_color_hex(C_DIM), 0);
+        lv_obj_set_style_img_recolor_opa(s_chrome.gesture_lock, LV_OPA_COVER, 0);
+    }
 
     int active = dn_page_index_in_group(m.view.page);
     int count = dn_page_count_in_group(m.view.page);

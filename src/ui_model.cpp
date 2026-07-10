@@ -56,6 +56,14 @@ UiModel dn_build_ui_model() {
     in.shakeDirection = g_gesture.shakeDirection();
 
     UiModel model = dn_build_ui_model_from_inputs(in);
+    model.header.gestureConfirmEnabled = g_state.gestureConfirmEnabled();
+#if DESKNEST_GESTURE_CONFIRM_BUTTON == GESTURE_CONFIRM_B
+    model.header.gestureConfirmKey = "B";
+#elif DESKNEST_GESTURE_CONFIRM_BUTTON == GESTURE_CONFIRM_NONE
+    model.header.gestureConfirmKey = "-";
+#else
+    model.header.gestureConfirmKey = "A";
+#endif
     const BootSplashStatus boot = dn_boot_splash_status();
     const bool boot_active = in.state.system == SYSTEM_BOOT || boot.active || in.state.page == PAGE_BOOT_FAILURE;
 
