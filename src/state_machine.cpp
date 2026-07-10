@@ -13,6 +13,10 @@ namespace desknest {
 StateMachine g_state;
 static bool g_gesture_confirm_enabled = true;
 
+bool StateMachine::gestureConfirmEnabled() const {
+    return g_gesture_confirm_enabled;
+}
+
 // Hardware button implementation overrides this in firmware. Native tests
 // do not link buttons.cpp, so navigation remains enabled by default there.
 bool __attribute__((weak)) dn_gesture_confirm_held() { return true; }
@@ -20,8 +24,7 @@ bool __attribute__((weak)) dn_gesture_confirm_held() { return true; }
 namespace {
 bool isNavigationGesture(GestureEvent g) {
     return g == GESTURE_SHAKE_LEFT || g == GESTURE_SHAKE_RIGHT ||
-           g == GESTURE_ROTATE_PORTRAIT_TO_LANDSCAPE ||
-           g == GESTURE_ROTATE_LANDSCAPE_TO_PORTRAIT || g == GESTURE_TAP;
+           g == GESTURE_TAP;
 }
 
 bool isLandscapePage(UIPage p) {
@@ -199,9 +202,7 @@ void StateMachine::update(GestureEvent g, ButtonEvent b, OrientationState detect
     updateFace(g, now_ms);
 #endif
 
-#if ENABLE_ORIENTATION_INPUT
-    updateOrientation(detected, now_ms);
-#endif
+    (void)detected;  // Runtime rotation navigation is retired for this MVP.
 
 #if ENABLE_BUTTON_INPUT
     updateButton(b, now_ms);

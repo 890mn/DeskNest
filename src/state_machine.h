@@ -92,6 +92,8 @@ public:
 
     // 立即查询
     const StateSnapshot& snapshot() const { return _s; }
+    // Current navigation safety gate, exposed read-only for the UI chrome.
+    bool gestureConfirmEnabled() const;
 
     // 强控（SETTINGS / 工厂复位用）
     void forcePage(UIPage p)               { _s.page = p; }
