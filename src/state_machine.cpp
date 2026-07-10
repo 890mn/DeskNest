@@ -11,6 +11,7 @@
 namespace desknest {
 
 StateMachine g_state;
+static bool g_gesture_confirm_enabled = true;
 
 // Hardware button implementation overrides this in firmware. Native tests
 // do not link buttons.cpp, so navigation remains enabled by default there.
@@ -66,6 +67,7 @@ UIPage StateMachine::prevLandscape(UIPage p) {
 // ============================================================================
 
 void StateMachine::begin() {
+    g_gesture_confirm_enabled = true;
     _s.system        = SYSTEM_BOOT;
     _s.face_state    = FACE_STATE_UP;        // 显式：开机默认 face_up
     _s.orientation   = ORIENTATION_PORTRAIT;
@@ -126,7 +128,7 @@ void StateMachine::updateGesture(GestureEvent g, uint32_t now_ms) {
     // 层级 gate：face_down 时所有手势输入都屏蔽
     if (_s.face_state == FACE_STATE_DOWN) return;
     if (g == GESTURE_NONE) return;
-    if (isNavigationGesture(g) && !dn_gesture_confirm_held()) return;
+    if (isNavigationGesture(g) && g_gesture_confirm_enabled && !dn_gesture_confirm_held()) return;
     applyGesture_(g, now_ms);
 }
 #endif
@@ -146,6 +148,20 @@ void StateMachine::updateButton(ButtonEvent b, uint32_t now_ms) {
         return;
     }
     if (b == BUTTON_NONE) return;
+    // In gesture-first mode A short press is reserved as a stable safety
+    // toggle: it enables/disables the confirmation-button gate.
+    if (b == BUTTON_NEXT && DESKNEST_NAV_PREFERENCE == NAV_GESTURE_FIRST) {
+        g_gesture_confirm_enabled = !g_gesture_confirm_enabled;
+        Serial.printf("[D][STATE] gesture confirmation %s\n",
+                      g_gesture_confirm_enabled ? "enabled" : "disabled");
+        return;
+    }
+    // A long press is no longer a settings shortcut while gesture-first is
+    // active; reserve it for a future explicit settings gesture.
+    if (b == BUTTON_MENU && DESKNEST_NAV_PREFERENCE == NAV_GESTURE_FIRST) {
+        Serial.println("[D][STATE] button MENU ignored (gesture-first)");
+        return;
+    }
     applyButton_(b, now_ms);
 }
 #endif
