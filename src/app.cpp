@@ -21,6 +21,7 @@
 #include <esp_log.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <freertos/semphr.h>
 
 namespace desknest {
 
@@ -59,7 +60,28 @@ struct BootRemoteStatus {
 };
 
 BootRemoteStatus g_boot_remote = {};
+SemaphoreHandle_t g_boot_remote_mutex = nullptr;
 constexpr uint32_t BOOT_REMOTE_TIMEOUT_MS = 6000;
+
+BootRemoteStatus boot_remote_snapshot() {
+    BootRemoteStatus snapshot{};
+    if (g_boot_remote_mutex && xSemaphoreTake(g_boot_remote_mutex, portMAX_DELAY) == pdTRUE) {
+        snapshot = g_boot_remote;
+        xSemaphoreGive(g_boot_remote_mutex);
+    } else {
+        snapshot = g_boot_remote;
+    }
+    return snapshot;
+}
+
+void boot_remote_publish(const BootRemoteStatus& snapshot) {
+    if (g_boot_remote_mutex && xSemaphoreTake(g_boot_remote_mutex, portMAX_DELAY) == pdTRUE) {
+        g_boot_remote = snapshot;
+        xSemaphoreGive(g_boot_remote_mutex);
+    } else {
+        g_boot_remote = snapshot;
+    }
+}
 
 const char* systemStateName(SystemState s) {
     switch (s) {
@@ -151,14 +173,23 @@ void print_sensors() {
 
 void boot_remote_task(void*) {
     Serial.println("[D][BOOT] remote task begin");
-    g_boot_remote.running = true;
-    g_boot_remote.started = true;
-    g_boot_remote.startedAtMs = millis();
+    BootRemoteStatus status{};
+    status.running = true;
+    status.started = true;
+    status.startedAtMs = millis();
+    boot_remote_publish(status);
 
     dn_ai_usage_service_begin();
 
+    bool boot_complete = false;
     while (true) {
         dn_ai_usage_service_tick();
+        // Keep this task alive as the sole owner of AI network/cache mutation;
+        // the main loop only consumes read-only snapshots.
+        if (boot_complete) {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            continue;
+        }
         const AIWiFiStatus wifi = dn_ai_usage_wifi_status();
         const bool wifi_ready = wifi.state == AI_WIFI_CONNECTED;
         const bool time_ready = dn_ai_usage_time_ready();
@@ -169,31 +200,34 @@ void boot_remote_task(void*) {
             ai_ready = dn_ai_usage_live_data_ready() && !ai.fromCache;
         }
 
-        g_boot_remote.wifiReady = wifi_ready;
-        g_boot_remote.timeReady = time_ready;
-        g_boot_remote.aiReady = ai_ready;
-        g_boot_remote.ready = wifi_ready && time_ready && ai_ready;
+        status.wifiReady = wifi_ready;
+        status.timeReady = time_ready;
+        status.aiReady = ai_ready;
+        status.ready = wifi_ready && time_ready && ai_ready;
 
-        if (g_boot_remote.ready) {
+        if (status.ready) {
             Serial.println("[D][BOOT] remote task ready");
-            g_boot_remote.running = false;
-            vTaskDelete(nullptr);
-            return;
+            status.running = false;
+            boot_remote_publish(status);
+            boot_complete = true;
+            continue;
         }
 
-        const uint32_t elapsed = millis() - g_boot_remote.startedAtMs;
+        const uint32_t elapsed = millis() - status.startedAtMs;
         if (elapsed >= BOOT_REMOTE_TIMEOUT_MS) {
-            g_boot_remote.failed = true;
-            if (!wifi_ready) g_boot_remote.failureReason = BOOT_FAIL_WIFI;
-            else if (!time_ready) g_boot_remote.failureReason = BOOT_FAIL_TIME;
-            else g_boot_remote.failureReason = BOOT_FAIL_AI;
+            status.failed = true;
+            if (!wifi_ready) status.failureReason = BOOT_FAIL_WIFI;
+            else if (!time_ready) status.failureReason = BOOT_FAIL_TIME;
+            else status.failureReason = BOOT_FAIL_AI;
             Serial.printf("[D][BOOT] remote task timeout=%lums reason=%d\n",
-                          (unsigned long)elapsed, (int)g_boot_remote.failureReason);
-            g_boot_remote.running = false;
+                          (unsigned long)elapsed, (int)status.failureReason);
+            status.running = false;
+            boot_remote_publish(status);
             vTaskDelete(nullptr);
             return;
         }
 
+        boot_remote_publish(status);
         vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
@@ -212,9 +246,9 @@ void boot_step(uint32_t now) {
             g_boot_phase = BOOT_INIT_START_REMOTE;
             break;
         case BOOT_INIT_START_REMOTE:
-            if (!g_boot_remote.started) {
+            if (!boot_remote_snapshot().started) {
                 Serial.println("[D][BOOT] step remote task");
-                g_boot_remote = {};
+                boot_remote_publish({});
                 xTaskCreatePinnedToCore(boot_remote_task,
                                         "dn_boot_remote",
                                         6144,
@@ -226,16 +260,17 @@ void boot_step(uint32_t now) {
             g_boot_phase = BOOT_INIT_WAIT_REMOTE;
             break;
         case BOOT_INIT_WAIT_REMOTE: {
+            const BootRemoteStatus remote = boot_remote_snapshot();
             dn_boot_splash_update(now,
                                   g_boot_k10_ready,
-                                  g_boot_remote.wifiReady,
-                                  g_boot_remote.timeReady,
-                                  g_boot_remote.aiReady,
-                                  g_boot_remote.failed,
-                                  g_boot_remote.failureReason);
-            if (g_boot_remote.ready && !dn_boot_splash_active()) {
+                                  remote.wifiReady,
+                                  remote.timeReady,
+                                  remote.aiReady,
+                                  remote.failed,
+                                  remote.failureReason);
+            if (remote.ready && !dn_boot_splash_active()) {
                 g_boot_phase = BOOT_INIT_DONE;
-            } else if (g_boot_remote.failed) {
+            } else if (remote.failed) {
                 g_boot_phase = BOOT_INIT_FAILED;
             }
             return;
@@ -263,7 +298,8 @@ void dn_app_setup() {
     desknest::g_state.begin();
     desknest::g_boot_phase = desknest::BOOT_INIT_SENSORS;
     desknest::g_boot_k10_ready = false;
-    desknest::g_boot_remote = {};
+    desknest::g_boot_remote_mutex = xSemaphoreCreateMutex();
+    desknest::boot_remote_publish({});
     desknest::g_boot_remote_task = nullptr;
 
     Serial.println("[D][BOOT] P0-B0: bootstrap K10 BSP...");
@@ -326,7 +362,6 @@ void dn_app_loop() {
     }
 
     // 4) 状态机
-    dn_ai_usage_service_tick();
     const OrientationState detected = g_gesture.orientation();
     g_state.update(g, b, detected, now);
 

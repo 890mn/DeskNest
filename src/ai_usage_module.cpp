@@ -9,6 +9,8 @@
 #include <HTTPClient.h>
 #include <WiFi.h>
 #include <time.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 namespace desknest {
 namespace {
@@ -34,6 +36,16 @@ static bool s_live_data_ready = false;
 static uint32_t s_last_time_sync_ms = 0;
 static uint32_t s_time_base_ms = 0;
 static time_t s_time_base_epoch = 0;
+static SemaphoreHandle_t s_state_mutex = nullptr;
+
+void ensure_state_mutex() {
+    if (!s_state_mutex) s_state_mutex = xSemaphoreCreateMutex();
+}
+
+struct StateLock {
+    StateLock() { ensure_state_mutex(); if (s_state_mutex) xSemaphoreTake(s_state_mutex, portMAX_DELAY); }
+    ~StateLock() { if (s_state_mutex) xSemaphoreGive(s_state_mutex); }
+};
 
 constexpr uint32_t kWiFiConnectCooldownMs = 20000;
 constexpr uint32_t kWiFiNoSsidCooldownMs = 45000;
@@ -258,6 +270,31 @@ bool fetch_tokennest_status(AIUsageStatus* out, uint32_t now) {
 } // namespace
 
 AIUsageStatus dn_ai_usage_status() {
+    StateLock lock;
+    const uint32_t now = millis();
+    const uint32_t refresh_ms = s_data_ready ? kRefreshIntervalMs : kBootstrapRetryMs;
+    AIUsageStatus current = s_cached;
+    const uint32_t elapsed = now >= s_last_load_ms ? now - s_last_load_ms : 0;
+    current.nextRefreshInSec = elapsed >= refresh_ms
+        ? 0
+        : (uint16_t)((refresh_ms - elapsed + 999) / 1000);
+    return current;
+}
+
+AIWiFiStatus dn_ai_usage_wifi_status() {
+    StateLock lock;
+    return s_wifi_status;
+}
+
+void dn_ai_usage_service_begin() {
+    ensure_state_mutex();
+    const uint32_t now = millis();
+    ensure_wifi_station_started();
+    refresh_wifi_link(now, true);
+}
+
+void dn_ai_usage_service_tick() {
+    StateLock lock;
     const uint32_t now = millis();
     refresh_wifi_link(now, true);
     const uint32_t refresh_ms = s_data_ready ? kRefreshIntervalMs : kBootstrapRetryMs;
@@ -282,30 +319,10 @@ AIUsageStatus dn_ai_usage_status() {
         s_loaded_once = true;
         s_last_load_ms = now;
     }
-    AIUsageStatus current = s_cached;
-    const uint32_t elapsed = now >= s_last_load_ms ? now - s_last_load_ms : 0;
-    current.nextRefreshInSec = elapsed >= refresh_ms
-        ? 0
-        : (uint16_t)((refresh_ms - elapsed + 999) / 1000);
-    return current;
-}
-
-AIWiFiStatus dn_ai_usage_wifi_status() {
-    refresh_wifi_link(millis(), true);
-    return s_wifi_status;
-}
-
-void dn_ai_usage_service_begin() {
-    const uint32_t now = millis();
-    ensure_wifi_station_started();
-    refresh_wifi_link(now, true);
-}
-
-void dn_ai_usage_service_tick() {
-    refresh_wifi_link(millis(), true);
 }
 
 const char* dn_ai_usage_time_text() {
+    StateLock lock;
     static char s_time_text[8] = "";
     if (!s_time_synced || s_time_base_epoch <= 0) return "";
 
@@ -322,20 +339,24 @@ const char* dn_ai_usage_time_text() {
 }
 
 time_t dn_ai_usage_now_epoch() {
+    StateLock lock;
     if (!s_time_synced || s_time_base_epoch <= 0) return 0;
     const uint32_t now_ms = millis();
     return s_time_base_epoch + (time_t)((now_ms - s_time_base_ms) / 1000UL);
 }
 
 bool dn_ai_usage_time_ready() {
+    StateLock lock;
     return s_time_synced && s_time_base_epoch > 0;
 }
 
 bool dn_ai_usage_data_ready() {
+    StateLock lock;
     return s_data_ready;
 }
 
 bool dn_ai_usage_live_data_ready() {
+    StateLock lock;
     return s_live_data_ready;
 }
 

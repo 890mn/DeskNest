@@ -360,6 +360,8 @@ inline bool dn_ai_usage_parse_cc_switch_status(const char* json,
     return true;
 }
 
+// Read-only snapshots. Network/HTTP mutation is performed only by the owner task
+// through dn_ai_usage_service_tick().
 AIUsageStatus dn_ai_usage_status();
 AIWiFiStatus dn_ai_usage_wifi_status();
 void dn_ai_usage_service_begin();

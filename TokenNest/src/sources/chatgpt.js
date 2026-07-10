@@ -307,8 +307,14 @@ export const tn_create_chatgpt_source = (config) => {
         },
         getCached: () => {
             const entry = tn_cache_read(cacheDir, 'chatgpt');
-            if (!entry) return { ok: false, ageSec: Infinity };
-            return { ...entry.data, ageSec: tn_cache_age_sec(entry) };
+            if (!entry) return { ok: false, ageSec: Infinity, stale: true, error: null };
+            const ageSec = tn_cache_age_sec(entry);
+            return {
+                ...entry.data,
+                ageSec,
+                stale: ageSec > config.staleThresholdSec || entry.data?.ok === false,
+                error: entry.data?.error ?? null,
+            };
         },
         getStatus: () => {
             const elapsedMs = lastTickAt > 0 ? Date.now() - lastTickAt : intervalMs;

@@ -169,3 +169,16 @@ test('/healthz: 200 when all sources ok and fresh', async () => {
         assert.equal(res.body.chatgpt.ok, true);
     } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('/healthz: 503 when a source cache is stale', async () => {
+    const sources = [
+        { name: 'chatgpt', getCached: () => ({ ok: true, ageSec: 301 }) },
+        { name: 'minimax', getCached: () => ({ ok: true, ageSec: 8 }) },
+    ];
+    const handler = tn_create_health_route({ sources, staleThresholdSec: 300 });
+    const res = makeRes();
+    handler({}, res);
+    assert.equal(res.statusCode, 503);
+    assert.equal(res.body.chatgpt.stale, true);
+    assert.equal(res.body.minimax.stale, false);
+});

@@ -48,7 +48,7 @@ const main = async () => {
 
     app.get('/status.json', tn_create_status_route({ getAggregate, staleThresholdSec: config.staleThresholdSec, sources }));
     app.get('/api/usage', tn_create_usage_route({ getAggregate }));
-    app.get('/healthz', tn_create_health_route({ sources }));
+    app.get('/healthz', tn_create_health_route({ sources, staleThresholdSec: config.staleThresholdSec }));
     app.get('/', (_req, res) => res.json({
         service: 'TokenNest',
         version: '0.1.0',
