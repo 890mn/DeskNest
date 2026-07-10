@@ -523,7 +523,9 @@ static void chrome_build() {
     lv_obj_set_style_pad_hor(s_chrome.header, 8, 0);
 
     s_chrome.title = make_label(s_chrome.header, &sty_ascii14, "DeskNest");
-    lv_obj_set_width(s_chrome.title, 92);
+    // The countdown owns this left region. The 80px status group is fixed
+    // on the right, so neither object can paint across the other.
+    lv_obj_set_width(s_chrome.title, 132);
     s_chrome.status_group = lv_obj_create(s_chrome.header);
     plain(s_chrome.status_group);
     lv_obj_set_size(s_chrome.status_group, 80, HEADER_H);
@@ -554,9 +556,9 @@ static void chrome_build() {
 
     const char* icons[5] = {
         LV_SYMBOL_HOME,
+        LV_SYMBOL_CHARGE,
         LV_SYMBOL_LIST,
-        LV_SYMBOL_SHUFFLE,
-        LV_SYMBOL_TINT,
+        LV_SYMBOL_SETTINGS,
         LV_SYMBOL_SETTINGS,
     };
     for (int i = 0; i < 5; ++i) {
@@ -583,14 +585,24 @@ static void chrome_update(const UiModel& m) {
     lv_obj_clear_flag(s_chrome.home, LV_OBJ_FLAG_HIDDEN);
 
     char title_buf[32] = "DeskNest";
+    if (m.view.page == PAGE_PORTRAIT_OVERVIEW) {
+        snprintf(title_buf, sizeof(title_buf), "%s",
+                 m.overview.timeText[0] ? m.overview.timeText : "--:--");
+    }
     if (m.view.page == PAGE_PORTRAIT_AI_USAGE) {
         if (m.aiUsage.nextRefreshInSec > 0) {
             const unsigned sec = (unsigned)m.aiUsage.nextRefreshInSec;
-            if (sec < 60) snprintf(title_buf, sizeof(title_buf), "DeskNest / %us", sec);
-            else snprintf(title_buf, sizeof(title_buf), "DeskNest / %um%02us", sec / 60, sec % 60);
+            if (sec < 60) snprintf(title_buf, sizeof(title_buf), "Refresh %us", sec);
+            else snprintf(title_buf, sizeof(title_buf), "Refresh %um%02us", sec / 60, sec % 60);
         } else {
-            snprintf(title_buf, sizeof(title_buf), "DeskNest / --");
+            snprintf(title_buf, sizeof(title_buf), "Refresh --");
         }
+    }
+    if (m.view.page == PAGE_PORTRAIT_MENU) {
+        snprintf(title_buf, sizeof(title_buf), "A pick  B save");
+    }
+    if (m.view.page == PAGE_PORTRAIT_SETTINGS) {
+        snprintf(title_buf, sizeof(title_buf), "A select  B switch");
     }
     set_text(s_chrome.title, title_buf);
 
@@ -630,7 +642,7 @@ static void chrome_update(const UiModel& m) {
         lv_obj_set_style_img_recolor(s_chrome.gesture_lock, lv_color_hex(C_SAND), 0);
         lv_obj_set_style_img_recolor_opa(s_chrome.gesture_lock, LV_OPA_COVER, 0);
     } else {
-        lv_img_set_src(s_chrome.gesture_lock, &dn_img_lock_open_16);
+        lv_img_set_src(s_chrome.gesture_lock, &dn_img_lock_16);
         lv_obj_set_style_img_recolor(s_chrome.gesture_lock, lv_color_hex(C_DIM), 0);
         lv_obj_set_style_img_recolor_opa(s_chrome.gesture_lock, LV_OPA_COVER, 0);
     }
@@ -664,37 +676,45 @@ static void boot_overlay_build() {
 
     s_boot.panel = lv_obj_create(s_boot.root);
     plain(s_boot.panel);
-    lv_obj_set_size(s_boot.panel, 220, 204);
-    lv_obj_set_pos(s_boot.panel, 10, 44);
+    lv_obj_set_size(s_boot.panel, 220, 170);
+    lv_obj_set_pos(s_boot.panel, 10, 58);
+    lv_obj_add_style(s_boot.panel, &sty_card, 0);
+    lv_obj_set_style_pad_all(s_boot.panel, 12, 0);
 
     s_boot.logo = lv_img_create(s_boot.panel);
     lv_img_set_src(s_boot.logo, &dn_img_dfrobot_40);
-    lv_obj_set_pos(s_boot.logo, 12, 18);
+    lv_obj_set_pos(s_boot.logo, 12, 16);
     lv_obj_set_style_img_recolor(s_boot.logo, lv_color_hex(C_BOOT), 0);
     lv_obj_set_style_img_recolor_opa(s_boot.logo, LV_OPA_COVER, 0);
 
     s_boot.title = make_label(s_boot.panel, &sty_text24, "栖屏");
-    lv_obj_set_pos(s_boot.title, 4, 70);
-    lv_obj_set_width(s_boot.title, 64);
-    lv_obj_set_style_text_align(s_boot.title, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_pos(s_boot.title, 64, 16);
+    lv_obj_set_width(s_boot.title, 132);
+    lv_obj_set_style_text_align(s_boot.title, LV_TEXT_ALIGN_LEFT, 0);
 
     s_boot.name = make_label(s_boot.panel, &sty_text24, "DeskNest");
-    lv_obj_set_pos(s_boot.name, 84, 24);
-    lv_obj_set_width(s_boot.name, 128);
+    lv_obj_set_pos(s_boot.name, 64, 42);
+    lv_obj_set_width(s_boot.name, 132);
 
     s_boot.subtitle = make_label(s_boot.panel, &sty_text16, "栖于桌面");
-    lv_obj_set_pos(s_boot.subtitle, 84, 62);
-    lv_obj_set_width(s_boot.subtitle, 128);
+    lv_obj_set_pos(s_boot.subtitle, 64, 78);
+    lv_obj_set_width(s_boot.subtitle, 132);
 
     s_boot.tagline = make_label(s_boot.panel, &sty_text16, "息于常亮之间");
-    lv_obj_set_pos(s_boot.tagline, 84, 86);
-    lv_obj_set_width(s_boot.tagline, 128);
+    lv_obj_set_pos(s_boot.tagline, 12, 122);
+    lv_obj_set_width(s_boot.tagline, 196);
     lv_obj_set_style_text_color(s_boot.tagline, lv_color_hex(C_LABEL), 0);
+    // Boot copy is deliberately ASCII-only: it remains legible before the
+    // complete CJK font path and network-backed model have both settled.
+    set_text(s_boot.title, "DESKNEST");
+    set_text(s_boot.name, "K10");
+    set_text(s_boot.subtitle, "Desk companion");
+    set_text(s_boot.tagline, "Getting ready");
 
     s_boot.progress_track = lv_obj_create(s_boot.root);
     lv_obj_remove_style_all(s_boot.progress_track);
     lv_obj_set_size(s_boot.progress_track, 196, 8);
-    lv_obj_set_pos(s_boot.progress_track, 22, 274);
+    lv_obj_set_pos(s_boot.progress_track, 22, 264);
     lv_obj_add_style(s_boot.progress_track, &sty_bar_track, 0);
 
     s_boot.progress_fill = lv_obj_create(s_boot.progress_track);
@@ -711,7 +731,7 @@ static void boot_overlay_build() {
     lv_obj_set_size(s_boot.progress_head, 38, 20);
     lv_obj_set_style_radius(s_boot.progress_head, 10, 0);
     lv_obj_set_style_bg_color(s_boot.progress_head, lv_color_hex(C_BOOT), 0);
-    lv_obj_set_pos(s_boot.progress_head, 10, 268);
+    lv_obj_set_pos(s_boot.progress_head, 10, 258);
 
     s_boot.progress_label = make_label(s_boot.progress_head, &sty_ascii14, "K10");
     lv_obj_center(s_boot.progress_label);
@@ -755,7 +775,7 @@ static void boot_overlay_update(const UiModel& m) {
     int head_x = min_x + ((max_x - min_x) * pct) / 100;
     if (head_x < min_x) head_x = min_x;
     if (head_x > max_x) head_x = max_x;
-    lv_obj_set_pos(s_boot.progress_head, head_x, 268);
+    lv_obj_set_pos(s_boot.progress_head, head_x, 258);
 }
 
 static void hide_all_pages() {
@@ -771,29 +791,25 @@ static void build_overview() {
     lv_obj_t* root = make_page_root(PAGE_PORTRAIT_OVERVIEW);
 
     // 3:2 home composition: a single dominant focus card and a compact support card.
-    lv_obj_t* top = make_row(root, 20, 8);
-    po.labels[0] = make_label(top, &sty_dim16);
-    lv_obj_set_flex_grow(po.labels[0], 1);
-
     lv_obj_t* focus = lv_obj_create(root);
-    lv_obj_set_size(focus, 220, 136);
+    lv_obj_set_size(focus, 220, 151);
     lv_obj_add_style(focus, &sty_card, 0);
     lv_obj_set_style_pad_all(focus, 10, 0);
     lv_obj_set_flex_flow(focus, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(focus, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-    lv_obj_set_style_pad_gap(focus, 6, 0);
-    lv_obj_t* focus_head = make_row(focus, 20, 6);
+    lv_obj_set_style_pad_gap(focus, 5, 0);
+    lv_obj_t* focus_head = make_row(focus, 18, 6);
     po.labels[1] = make_label(focus_head, &sty_brand16, "TODAY");
-    po.labels[2] = make_label(focus_head, &sty_dim16, "FOCUS");
+    po.labels[2] = make_label(focus_head, &sty_dim16, "ONE THING");
     po.labels[3] = make_label(focus, &sty_text24, "Ready");
     lv_obj_set_width(po.labels[3], 198);
     po.labels[4] = make_label(focus, &sty_text16, "");
     lv_obj_set_width(po.labels[4], 198);
-    po.labels[5] = make_label(focus, &sty_dim16, "Tap to explore  >");
+    po.labels[5] = make_label(focus, &sty_dim16, "A to open");
     lv_obj_set_width(po.labels[5], 198);
 
     lv_obj_t* card = lv_obj_create(root);
-    lv_obj_set_size(card, 220, 84);
+    lv_obj_set_size(card, 220, 97);
     lv_obj_add_style(card, &sty_card, 0);
     lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(card, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
@@ -810,13 +826,8 @@ static void update_overview(const UiModel& m) {
     PageObjects& po = page_objects(PAGE_PORTRAIT_OVERVIEW);
     char buf[48];
 
-    snprintf(buf, sizeof(buf), "%s  |  %s",
-             m.overview.timeText[0] ? m.overview.timeText : "--:--",
-             m.overview.suggestionText[0] ? m.overview.suggestionText : "Ready");
-    set_text(po.labels[0], buf);
-
     set_text(po.labels[1], "TODAY");
-    set_text(po.labels[2], "FOCUS");
+    set_text(po.labels[2], "ONE THING");
     set_text(po.labels[3], m.homeFocus.title[0] ? m.homeFocus.title : "Ready");
     set_text(po.labels[4], m.homeFocus.detail[0] ? m.homeFocus.detail : "Nothing needs your attention");
 
@@ -995,24 +1006,37 @@ static void build_menu() {
     PageObjects& po = page_objects(PAGE_PORTRAIT_MENU);
     if (po.built) return;
     lv_obj_t* root = make_page_root(PAGE_PORTRAIT_MENU);
-    lv_obj_set_style_pad_gap(root, 4, 0);
+    lv_obj_set_style_pad_gap(root, 5, 0);
 
-    po.labels[0] = make_label(root, &sty_text16);
-    po.labels[1] = make_label(root, &sty_dim16);
+    lv_obj_t* prompt = lv_obj_create(root);
+    lv_obj_set_size(prompt, 220, 56);
+    lv_obj_add_style(prompt, &sty_card, 0);
+    lv_obj_set_style_pad_all(prompt, 8, 0);
+    po.labels[0] = make_label(prompt, &sty_brand16);
+    lv_obj_set_pos(po.labels[0], 0, 0);
+    lv_obj_set_width(po.labels[0], 200);
+    po.labels[1] = make_label(prompt, &sty_dim16);
+    lv_obj_set_pos(po.labels[1], 0, 26);
+    lv_obj_set_width(po.labels[1], 200);
 
-    lv_obj_t* div = lv_obj_create(root);
-    lv_obj_set_size(div, 220, 1);
-    lv_obj_add_style(div, &sty_divider, 0);
-
-    for (int i = 0; i < 6; ++i) {
+    for (int i = 0; i < 5; ++i) {
         lv_obj_t* row = make_row(root, 24, 6);
         po.rows[i] = row;
-        po.labels[2 + i * 2] = make_label(row, &sty_text16);
-        lv_obj_set_flex_grow(po.labels[2 + i * 2], 1);
-        po.labels[3 + i * 2] = make_label(row, &sty_brand16);
+        po.labels[2 + i * 4] = make_label(row, &sty_brand16, " ");
+        lv_obj_set_width(po.labels[2 + i * 4], 14);
+        po.labels[3 + i * 4] = make_label(row, &sty_text16);
+        lv_obj_set_flex_grow(po.labels[3 + i * 4], 1);
+        po.labels[4 + i * 4] = make_label(row, &sty_ascii14);
+        lv_obj_set_width(po.labels[4 + i * 4], 32);
+        lv_obj_set_style_text_align(po.labels[4 + i * 4], LV_TEXT_ALIGN_RIGHT, 0);
+        po.labels[5 + i * 4] = make_label(row, &sty_ascii14);
+        lv_obj_set_width(po.labels[5 + i * 4], 38);
+        lv_obj_set_style_text_align(po.labels[5 + i * 4], LV_TEXT_ALIGN_RIGHT, 0);
     }
 
-    po.labels[14] = make_label(root, &sty_dim16);
+    po.labels[22] = make_label(root, &sty_dim16, "A pick  B save");
+    lv_obj_set_width(po.labels[22], 220);
+    lv_obj_set_style_text_align(po.labels[22], LV_TEXT_ALIGN_CENTER, 0);
     po.built = true;
 }
 
@@ -1022,17 +1046,16 @@ static void update_menu(const UiModel& m) {
     set_text(po.labels[1], m.menu.lastMeal);
 
     int row = 0;
-    for (uint8_t g = 0; g < m.menu.groupCount && g < 4 && row < 6; ++g) {
+    for (uint8_t g = 0; g < m.menu.groupCount && g < 4 && row < 5; ++g) {
         const UiMenuGroupProps& grp = m.menu.groups[g];
-        for (uint8_t c = 0; c < grp.candidateCount && c < 6 && row < 6; ++c) {
+        for (uint8_t c = 0; c < grp.candidateCount && c < 6 && row < 5; ++c) {
             const UiMenuCandidateProps& item = grp.candidates[c];
-            char left[56];
-            snprintf(left, sizeof(left), "%s %s", item.active ? ">" : " ", item.name);
-            set_text(po.labels[2 + row * 2], left);
-
-            char right[24];
-            snprintf(right, sizeof(right), "%s %u.%u", item.price, item.score / 10, item.score % 10);
-            set_text(po.labels[3 + row * 2], right);
+            set_text(po.labels[2 + row * 4], item.active ? ">" : " ");
+            set_text(po.labels[3 + row * 4], item.name);
+            set_text(po.labels[4 + row * 4], item.price);
+            char score[12];
+            snprintf(score, sizeof(score), "%u.%u", item.score / 10, item.score % 10);
+            set_text(po.labels[5 + row * 4], score);
 
             lv_obj_clear_flag(po.rows[row], LV_OBJ_FLAG_HIDDEN);
             lv_obj_set_style_bg_opa(po.rows[row], item.active ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
@@ -1041,12 +1064,12 @@ static void update_menu(const UiModel& m) {
         }
     }
 
-    while (row < 6) {
+    while (row < 5) {
         lv_obj_add_flag(po.rows[row], LV_OBJ_FLAG_HIDDEN);
         ++row;
     }
 
-    set_text(po.labels[14], m.menu.diceHint);
+    set_text(po.labels[22], "A pick  B save");
 }
 
 static void build_environment() {
@@ -1114,20 +1137,14 @@ static void build_settings() {
     PageObjects& po = page_objects(PAGE_PORTRAIT_SETTINGS);
     if (po.built) return;
     lv_obj_t* root = make_page_root(PAGE_PORTRAIT_SETTINGS);
-    po.labels[0] = make_label(root, &sty_ascii14, "Settings");
-
     for (int i = 0; i < 6; ++i) {
-        lv_obj_t* row = make_row(root, 26, 5);
+        lv_obj_t* row = make_row(root, 32, 5);
         po.rows[i] = row;
-        po.labels[1 + i * 2] = make_label(row, &sty_ascii14);
+        po.labels[1 + i * 2] = make_label(row, &sty_text16);
         lv_obj_set_flex_grow(po.labels[1 + i * 2], 1);
-        po.labels[2 + i * 2] = make_label(row, &sty_ascii14);
+        po.labels[2 + i * 2] = make_label(row, &sty_text16);
+        lv_obj_set_style_text_align(po.labels[2 + i * 2], LV_TEXT_ALIGN_RIGHT, 0);
     }
-
-    lv_obj_t* danger = lv_obj_create(root);
-    lv_obj_set_size(danger, 220, 28);
-    lv_obj_add_style(danger, &sty_danger, 0);
-    po.labels[13] = make_label(danger, &sty_ascii14);
 
     po.built = true;
 }
@@ -1148,7 +1165,6 @@ static void update_settings(const UiModel& m) {
         lv_obj_set_style_bg_opa(po.rows[i], i == m.settings.selectedIndex ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
         lv_obj_set_style_bg_color(po.rows[i], lv_color_hex(C_CARD_HI), 0);
     }
-    set_text(po.labels[13], m.settings.dangerHint[0] ? m.settings.dangerHint : "[A+B] Factory Reset");
 }
 
 static void build_face_down() {
@@ -1157,11 +1173,11 @@ static void build_face_down() {
     lv_obj_t* root = make_page_root(PAGE_SLEEP_FACE_DOWN);
     lv_obj_set_pos(root, 0, 0);
     lv_obj_set_size(root, SCREEN_W, SCREEN_H);
-    lv_obj_set_style_pad_top(root, 96, 0);
+    lv_obj_set_style_pad_top(root, 102, 0);
     lv_obj_set_flex_align(root, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    po.labels[0] = make_label(root, &sty_brand24);
-    po.labels[1] = make_label(root, &sty_dim16);
-    po.labels[2] = make_label(root, &sty_label16);
+    po.labels[0] = make_label(root, &sty_brand24, "REST");
+    po.labels[1] = make_label(root, &sty_text16);
+    po.labels[2] = make_label(root, &sty_dim16);
     po.built = true;
 }
 
@@ -1235,12 +1251,7 @@ static void build_page(UIPage page) {
         case PAGE_SLEEP_FACE_DOWN:      build_face_down(); break;
         case PAGE_CONFIG_PORTAL:        build_config(); break;
         case PAGE_BOOT_FAILURE:         build_boot_failure(); break;
-        case PAGE_LANDSCAPE_OVERVIEW:
-        case PAGE_LANDSCAPE_FOCUS:
-        case PAGE_LANDSCAPE_CUSTOM:
-        default:
-            build_overview();
-            break;
+        default:                        build_overview(); break;
     }
 }
 

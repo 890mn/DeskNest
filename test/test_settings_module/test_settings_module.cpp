@@ -5,20 +5,15 @@
 using namespace desknest;
 
 void test_settings_module_returns_default_rows() {
-    SettingsStatus status = dn_settings_default_status();
+    const uint8_t values[4] = {0, 0, 0, 0};
+    SettingsStatus status = dn_settings_status(values, 0);
 
-    TEST_ASSERT_EQUAL_UINT8(5, status.rowCount);
-    TEST_ASSERT_EQUAL_STRING("Power", status.rows[0].label);
-    TEST_ASSERT_EQUAL_STRING("Balanced", status.rows[0].value);
-    TEST_ASSERT_EQUAL_STRING("Sync", status.rows[1].label);
-    TEST_ASSERT_EQUAL_STRING("Battery", status.rows[1].value);
-    TEST_ASSERT_EQUAL_STRING("Density", status.rows[2].label);
-    TEST_ASSERT_EQUAL_STRING("Normal", status.rows[2].value);
-    TEST_ASSERT_EQUAL_STRING("Rotate", status.rows[3].label);
-    TEST_ASSERT_EQUAL_STRING("Auto", status.rows[3].value);
-    TEST_ASSERT_EQUAL_STRING("Theme", status.rows[4].label);
-    TEST_ASSERT_EQUAL_STRING("Dark", status.rows[4].value);
-    TEST_ASSERT_EQUAL_STRING("[A+B] Factory", status.dangerHint);
+    TEST_ASSERT_EQUAL_UINT8(4, status.rowCount);
+    TEST_ASSERT_EQUAL_UINT8(0, status.selectedIndex);
+    TEST_ASSERT_TRUE(status.rows[0].selectable);
+    TEST_ASSERT_TRUE(status.rows[1].selectable);
+    TEST_ASSERT_EQUAL_UINT8(4, dn_settings_option_count(0));
+    TEST_ASSERT_EQUAL_UINT8(2, dn_settings_option_count(1));
 }
 
 void setUp(void) {}
@@ -29,4 +24,3 @@ int main(int argc, char **argv) {
     RUN_TEST(test_settings_module_returns_default_rows);
     return UNITY_END();
 }
-

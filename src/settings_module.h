@@ -33,20 +33,27 @@ inline SettingsRowStatus dn_settings_row_status(const char* label,
     return row;
 }
 
-inline SettingsStatus dn_settings_default_status() {
+inline uint8_t dn_settings_option_count(uint8_t row) {
+    static const uint8_t counts[] = {4, 2, 2, 2};
+    return row < 4 ? counts[row] : 1;
+}
+
+inline SettingsStatus dn_settings_status(const uint8_t values[4], uint8_t selectedIndex) {
     SettingsStatus status;
-    status.rowCount = 5;
-    status.rows[0] = dn_settings_row_status("Power", "Balanced", true);
-    status.rows[1] = dn_settings_row_status("Sync", "Battery", true);
-    status.rows[2] = dn_settings_row_status("Density", "Normal", true);
-    status.rows[3] = dn_settings_row_status("Rotate", "Auto", true);
-    status.rows[4] = dn_settings_row_status("Theme", "Dark", true);
-    status.selectedIndex = 0;
-    status.dangerHint = "[A+B] Factory";
+    static const char* const homeValues[] = {"自动", "AI优先", "生活优先", "极简"};
+    static const char* const confirmValues[] = {"开启", "关闭"};
+    static const char* const syncValues[] = {"省电", "实时"};
+    static const char* const themeValues[] = {"深色", "柔和"};
+    status.rowCount = 4;
+    status.rows[0] = dn_settings_row_status("首页模块", homeValues[values[0] % 4], true);
+    status.rows[1] = dn_settings_row_status("手势确认", confirmValues[values[1] % 2], true);
+    status.rows[2] = dn_settings_row_status("同步模式", syncValues[values[2] % 2], true);
+    status.rows[3] = dn_settings_row_status("界面主题", themeValues[values[3] % 2], true);
+    status.selectedIndex = selectedIndex < status.rowCount ? selectedIndex : 0;
+    status.dangerHint = "A 选择  B 切换";
     return status;
 }
 
 } // namespace desknest
 
 #endif // DESKNEST_SETTINGS_MODULE_H
-

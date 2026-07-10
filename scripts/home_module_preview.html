@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>DeskNest 首页模块库</title>
+  <style>
+    :root { --bg:#0f1419; --card:#1a2128; --line:#2a3447; --text:#ece8dc; --muted:#8b95a8; --brand:#9cb89b; --sand:#d4b896; --warn:#c97c7c; }
+    * { box-sizing:border-box; } body { margin:0; min-height:100vh; background:#080c10; color:var(--text); font:14px system-ui,"Microsoft YaHei",sans-serif; display:grid; place-items:center; }
+    main { width:min(920px,calc(100% - 32px)); display:grid; grid-template-columns:240px 1fr; gap:36px; align-items:start; }
+    .device { width:240px; height:320px; background:var(--bg); border:1px solid #34404e; border-radius:18px; overflow:hidden; box-shadow:0 20px 60px #0008; }
+    .top { height:32px; padding:0 8px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--line); font-weight:700; }
+    .status { display:flex; align-items:center; gap:4px; color:var(--brand); font-size:12px; } .lock { color:var(--sand); font-size:15px; }
+    .content { height:264px; padding:4px 10px; display:flex; flex-direction:column; gap:6px; }
+    .focus { height:151px; padding:10px; border-radius:8px; background:var(--card); display:flex; flex-direction:column; gap:7px; }
+    .eyebrow { display:flex; gap:7px; font-size:12px; } .eyebrow b { color:var(--brand); } .eyebrow span { color:var(--muted); }
+    .focus h2 { margin:4px 0 0; font-size:23px; line-height:1.15; } .focus p { margin:0; color:var(--muted); line-height:1.45; } .action { margin-top:auto; color:var(--sand); font-size:12px; }
+    .support { height:97px; padding:10px; border-radius:8px; background:var(--card); display:flex; flex-direction:column; gap:8px; }
+    .support-head { display:flex; justify-content:space-between; color:var(--muted); font-size:12px; } .support strong { color:var(--brand); }
+    .bar { height:8px; border-radius:4px; overflow:hidden; background:#2a3447; } .bar i { display:block; height:100%; width:72%; background:var(--brand); border-radius:inherit; }
+    .footer { height:24px; border-top:1px solid var(--line); display:flex; justify-content:center; align-items:center; gap:18px; color:#5a6478; font-size:13px; }
+    section h1 { margin:0 0 8px; font-size:24px; } section > p { margin:0 0 20px; color:var(--muted); line-height:1.6; }
+    .controls { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:22px; } button { background:var(--card); border:1px solid var(--line); color:var(--text); padding:8px 11px; border-radius:6px; cursor:pointer; } button.active { border-color:var(--brand); color:var(--brand); }
+    .library { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:10px; } article { min-height:104px; padding:13px; background:#12181e; border:1px solid var(--line); border-radius:8px; } article h3 { margin:0 0 8px; font-size:14px; color:var(--brand); } article p { margin:0; color:var(--muted); line-height:1.55; font-size:13px; } .tag { color:var(--sand); font-size:12px; }
+    @media (max-width:680px) { main { grid-template-columns:1fr; justify-items:center; padding:28px 0; } section { width:100%; } }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="device" aria-label="240 x 320 首页预览">
+      <div class="top"><span id="time">10:55</span><span class="status"><span class="lock">▣</span>⌁ OK</span></div>
+      <div class="content">
+        <div class="focus"><div class="eyebrow"><b>TODAY</b><span id="kind">ONE THING</span></div><h2 id="title">今天吃什么</h2><p id="detail">还没有决定今天的选择</p><span class="action" id="action">A to open</span></div>
+        <div class="support"><div class="support-head"><span id="supportTitle">AI USAGE</span><strong id="value">72%</strong></div><div class="bar"><i id="bar"></i></div><span id="supportDetail" class="tag">ChatGPT and MiniMax ready</span></div>
+      </div>
+      <div class="footer"><span>⌂</span><span>≡</span><span>⤨</span><span>⚙</span></div>
+    </div>
+    <section>
+      <h1>首页模块库</h1>
+      <p>固定为 240×320 板载布局。顶栏 32px，底栏 24px，中间只分配一张 151px 主卡和一张 97px 支持卡。</p>
+      <div class="controls">
+        <button class="active" data-state="life">生活提醒</button><button data-state="risk">AI 临界</button><button data-state="normal">AI 正常</button><button data-state="quiet">极简空闲</button>
+      </div>
+      <div class="library">
+        <article><h3>今日选择</h3><p><span class="tag">主卡</span><br>今天吃什么，13:00 反馈，电脑端同步的生活选择。</p></article>
+        <article><h3>AI 临界</h3><p><span class="tag">主卡</span><br>额度接近上限，显示剩余比例和下一次刷新时间。</p></article>
+        <article><h3>AI 摘要</h3><p><span class="tag">支持卡</span><br>ChatGPT 与 MiniMax 合计状态。只显示关键比例。</p></article>
+        <article><h3>今日节奏</h3><p><span class="tag">支持卡</span><br>一句轻提醒，例如休息，补水，开始专注。</p></article>
+        <article><h3>环境情绪</h3><p><span class="tag">支持卡</span><br>不展示不可靠温湿度，仅保留天气或光线带来的轻提示。</p></article>
+        <article><h3>极简空闲</h3><p><span class="tag">主卡</span><br>无待办时显示时间感和一句轻内容，避免制造任务压力。</p></article>
+      </div>
+    </section>
+  </main>
+  <script>
+    const states = {
+      life: { kind:'LIFE', title:'今天吃什么', detail:'还没有决定今天的选择', action:'A to open', support:'AI USAGE', value:'72%', width:72, note:'ChatGPT and MiniMax ready' },
+      risk: { kind:'AI ALERT', title:'AI 用量偏高', detail:'额度接近上限，建议查看详情', action:'A to review', support:'NEXT REFRESH', value:'18m', width:88, note:'MiniMax 5h window' },
+      normal: { kind:'AI READY', title:'今天状态稳定', detail:'AI 用量正常，生活提醒将在 13:00 出现', action:'', support:'AI USAGE', value:'42%', width:42, note:'All windows available' },
+      quiet: { kind:'QUIET', title:'留一点空白', detail:'今天还没有需要处理的事', action:'', support:'TODAY', value:'READY', width:28, note:'DeskNest is here' }
+    };
+    document.querySelectorAll('button').forEach(button => button.onclick = () => {
+      document.querySelectorAll('button').forEach(x => x.classList.remove('active')); button.classList.add('active'); const s = states[button.dataset.state];
+      kind.textContent=s.kind; title.textContent=s.title; detail.textContent=s.detail; action.textContent=s.action; supportTitle.textContent=s.support; value.textContent=s.value; bar.style.width=s.width+'%'; supportDetail.textContent=s.note;
+    });
+  </script>
+</body>
+</html>

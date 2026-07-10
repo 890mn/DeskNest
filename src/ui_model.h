@@ -549,7 +549,8 @@ inline UiModel dn_build_ui_model_from_inputs(const UiModelInputs& in) {
     m.environment.lightGrade = envStatus.lightGrade;
     m.environment.adviceText = envStatus.adviceText;
 
-    const SettingsStatus settingsStatus = dn_settings_default_status();
+    const SettingsStatus settingsStatus = dn_settings_status(s.settingsValues,
+                                                             s.settingsSelectedIndex);
     m.settings.rowCount = settingsStatus.rowCount;
     for (uint8_t i = 0; i < settingsStatus.rowCount && i < 8; ++i) {
         m.settings.rows[i] = dn_settings_row(settingsStatus.rows[i]);
@@ -602,19 +603,19 @@ inline UiModel dn_build_ui_model_from_inputs(const UiModelInputs& in) {
     m.animation.forceFullRedraw = false;
 
     // ---- 今天吃什么（MenuModule mock） ----
-    m.menu.ask = "今天，吃点热的？";
-    m.menu.lastMeal = "昨天 · 日式咖喱饭";
+    m.menu.ask = "今天 番茄牛腩面";
+    m.menu.lastMeal = "昨天 日式咖喱饭";
 
     {
         auto& g = m.menu.groups[0];
         g.name = "面食";
         g.candidateCount = 2;
         g.candidates[0].name = "番茄牛腩面";
-        g.candidates[0].price = "¥28";
+        g.candidates[0].price = "28";
         g.candidates[0].score = 84;
         g.candidates[0].active = false;
         g.candidates[1].name = "葱油拌面";
-        g.candidates[1].price = "¥12";
+        g.candidates[1].price = "12";
         g.candidates[1].score = 72;
         g.candidates[1].active = false;
     }
@@ -623,11 +624,11 @@ inline UiModel dn_build_ui_model_from_inputs(const UiModelInputs& in) {
         g.name = "汤锅";
         g.candidateCount = 2;
         g.candidates[0].name = "砂锅豆腐汤";
-        g.candidates[0].price = "¥22";
+        g.candidates[0].price = "22";
         g.candidates[0].score = 81;
         g.candidates[0].active = true;   // active = 推荐
         g.candidates[1].name = "韩式泡菜锅";
-        g.candidates[1].price = "¥35";
+        g.candidates[1].price = "35";
         g.candidates[1].score = 78;
         g.candidates[1].active = false;
     }
@@ -636,12 +637,12 @@ inline UiModel dn_build_ui_model_from_inputs(const UiModelInputs& in) {
         g.name = "小炒";
         g.candidateCount = 1;
         g.candidates[0].name = "麻辣香锅";
-        g.candidates[0].price = "¥42";
+        g.candidates[0].price = "42";
         g.candidates[0].score = 87;
         g.candidates[0].active = false;
     }
     m.menu.groupCount = 3;
-    m.menu.diceHint = "[A] 重抽 · [B] 记下";
+    m.menu.diceHint = "A pick  B save";
 
     return m;
 }

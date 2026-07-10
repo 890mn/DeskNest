@@ -5,6 +5,7 @@
 #include "state_machine.h"
 #include "page_registry.h"
 #include "buttons.h"
+#include "settings_module.h"
 
 #include <Arduino.h>
 
@@ -78,6 +79,8 @@ void StateMachine::begin() {
     _s.rotLock       = ROT_AUTO;
     _s.lastInputMs   = millis();
     _temp_unlock_expire_ms = 0;
+    _s.settingsSelectedIndex = 0;
+    for (uint8_t& value : _s.settingsValues) value = 0;
 
     Serial.println("[D][STATE] begin → FACE_UP / BOOT / PORTRAIT / OVERVIEW");
 }
@@ -151,6 +154,22 @@ void StateMachine::updateButton(ButtonEvent b, uint32_t now_ms) {
         return;
     }
     if (b == BUTTON_NONE) return;
+    if (_s.page == PAGE_PORTRAIT_SETTINGS) {
+        if (b == BUTTON_NEXT) {
+            _s.settingsSelectedIndex = (uint8_t)((_s.settingsSelectedIndex + 1) % 4);
+            Serial.printf("[D][SETTINGS] select=%u\n", (unsigned)_s.settingsSelectedIndex);
+            return;
+        }
+        if (b == BUTTON_PREV) {
+            const uint8_t row = _s.settingsSelectedIndex;
+            const uint8_t count = dn_settings_option_count(row);
+            _s.settingsValues[row] = (uint8_t)((_s.settingsValues[row] + 1) % count);
+            if (row == 1) g_gesture_confirm_enabled = (_s.settingsValues[row] == 0);
+            Serial.printf("[D][SETTINGS] row=%u value=%u\n", (unsigned)row,
+                          (unsigned)_s.settingsValues[row]);
+            return;
+        }
+    }
     // In gesture-first mode A short press is reserved as a stable safety
     // toggle: it enables/disables the confirmation-button gate.
     if (b == BUTTON_NEXT && DESKNEST_NAV_PREFERENCE == NAV_GESTURE_FIRST) {
