@@ -196,6 +196,7 @@ private:
     int8_t     _shake_axis_sign = 0;   // 原始 ax 首峰符号
     int8_t     _shake_direction = 0;   // UI 语义：+1=left, -1=right
     uint8_t    _shake_settle_samples = 0;
+    uint8_t    _shake_outbound_samples = 0;
     uint32_t   _shake_started_ms = 0;
     float      _shake_baseline_ax = 0.0f;
     bool       _shake_baseline_valid = false;
