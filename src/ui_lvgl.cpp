@@ -813,9 +813,6 @@ static void build_overview() {
     lv_obj_set_flex_align(ai_head, LV_FLEX_ALIGN_SPACE_BETWEEN,
                           LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     po.labels[1] = make_label(ai_head, &sty_brand16, "AI USAGE");
-    po.labels[2] = make_label(ai_head, &sty_dim16, "cached");
-    lv_obj_set_width(po.labels[2], 112);
-    lv_obj_set_style_text_align(po.labels[2], LV_TEXT_ALIGN_RIGHT, 0);
 
     lv_obj_t* ai_total = lv_obj_create(ai);
     plain(ai_total);
@@ -826,8 +823,9 @@ static void build_overview() {
     lv_obj_set_style_pad_gap(ai_total, 5, 0);
     po.labels[3] = make_label(ai_total, &sty_brand24, "0%");
     lv_obj_set_width(po.labels[3], 62);
-    po.labels[4] = make_label(ai_total, &sty_dim16, "used");
-    lv_obj_set_width(po.labels[4], 50);
+    po.labels[4] = make_label(ai_total, &sty_dim16, "--");
+    lv_obj_set_width(po.labels[4], 112);
+    lv_obj_set_style_text_align(po.labels[4], LV_TEXT_ALIGN_RIGHT, 0);
     make_track(ai, 204, 8, &po.bars[0]);
 
     const char* provider_names[2] = {"Codex", "MiniMax"};
@@ -904,11 +902,10 @@ static void update_overview(const UiModel& m) {
         ? m.aiUsage.warningText
         : (m.aiUsage.updatedAtText && m.aiUsage.updatedAtText[0]
             ? m.aiUsage.updatedAtText : "cached");
-    set_text(po.labels[2], ai_state);
 
     snprintf(buf, sizeof(buf), "%u%%", (unsigned)m.aiUsage.totalPercent);
     set_text(po.labels[3], buf);
-    set_text(po.labels[4], "used");
+    set_text(po.labels[4], ai_state);
     set_bar(po.bars[0], m.aiUsage.totalPercent, 204);
 
     // TokenNest's ChatGPT quota is sourced through the Codex CLI OAuth flow.
@@ -942,19 +939,19 @@ static void update_overview(const UiModel& m) {
     if (m.environment.valid) {
         snprintf(buf, sizeof(buf), "%.1f°C", (double)m.environment.temperatureC);
         set_text(po.labels[13], buf);
-        snprintf(buf, sizeof(buf), "%.0f%%", (double)m.environment.humidityPct);
+    snprintf(buf, sizeof(buf), "%.0f%%", (double)m.environment.humidityPct);
         set_text(po.labels[14], buf);
         snprintf(buf, sizeof(buf), "%ulx", (unsigned)m.environment.lux);
         set_text(po.labels[15], buf);
-        set_text(po.labels[16],
-                 m.environment.adviceText && m.environment.adviceText[0]
-                     ? m.environment.adviceText : "environment stable");
     } else {
         set_text(po.labels[13], "--");
         set_text(po.labels[14], "--");
         set_text(po.labels[15], "--");
-        set_text(po.labels[16], "sensor unavailable");
     }
+
+    const char* daily_advice = dn_home_daily_advice(m);
+    snprintf(buf, sizeof(buf), "今日建议：%s", daily_advice);
+    set_text(po.labels[16], buf);
 }
 
 static void build_ai_usage() {

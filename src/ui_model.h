@@ -312,6 +312,23 @@ struct UiModel {
     UiAnimationProps animation;
 };
 
+// Presentation-ready daily advice selection. The source strings stay in the
+// render-data model; the renderer only displays the selected sentence.
+inline const char* dn_home_daily_advice(const UiModel& m) {
+    const uint32_t period = defaults::T_HOME_DAILY_ADVICE_ROTATE_MS;
+    const bool use_secondary = period > 0 &&
+        ((m.view.nowMs / period) % 2U) != 0U;
+    const char* candidate = use_secondary
+        ? m.overview.messageText
+        : m.overview.suggestionText;
+    if (!candidate || !candidate[0]) {
+        candidate = use_secondary
+            ? m.overview.suggestionText
+            : m.overview.messageText;
+    }
+    return (candidate && candidate[0]) ? candidate : "保持专注";
+}
+
 struct UiModelInputs {
     StateSnapshot state = {};
     uint32_t nowMs = 0;

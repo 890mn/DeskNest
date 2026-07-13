@@ -32,6 +32,10 @@ struct AHT20Reading {
     uint32_t fetchedAtMs;
 };
 
+inline float dn_apply_aht20_temperature_compensation(float rawTemperatureC) {
+    return rawTemperatureC + defaults::AHT20_TEMPERATURE_OFFSET_C;
+}
+
 struct LTR303Reading {
     bool    valid;
     float   lux;            // 流明

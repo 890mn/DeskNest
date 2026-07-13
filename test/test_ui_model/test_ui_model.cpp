@@ -42,6 +42,19 @@ void test_ui_model_maps_overview_sensor_values() {
     TEST_ASSERT_EQUAL_STRING("ACTIVE", model.status.systemText);
 }
 
+void test_home_daily_advice_rotates_existing_messages() {
+    UiModelInputs in = {};
+    in.state = baseSnapshot();
+
+    in.nowMs = 0;
+    UiModel first = dn_build_ui_model_from_inputs(in);
+    TEST_ASSERT_EQUAL_STRING("保持专注", dn_home_daily_advice(first));
+
+    in.nowMs = defaults::T_HOME_DAILY_ADVICE_ROTATE_MS;
+    UiModel second = dn_build_ui_model_from_inputs(in);
+    TEST_ASSERT_EQUAL_STRING("今天额度还够", dn_home_daily_advice(second));
+}
+
 void test_ui_model_marks_face_down_as_sleeping_special_page() {
     UiModelInputs in = {};
     in.state = baseSnapshot();
@@ -113,6 +126,7 @@ void tearDown(void) {}
 int main(int argc, char **argv) {
     UNITY_BEGIN();
     RUN_TEST(test_ui_model_maps_overview_sensor_values);
+    RUN_TEST(test_home_daily_advice_rotates_existing_messages);
     RUN_TEST(test_ui_model_marks_face_down_as_sleeping_special_page);
     RUN_TEST(test_ui_model_maps_shake_animation);
     RUN_TEST(test_home_focus_prioritizes_ai_risk_over_life);

@@ -166,3 +166,27 @@ preview should declare which pages are current acceptance targets and which
 are historical. Filling a fixed card with meaningful model data is preferable
 to preserving a decorative empty region; unrelated pages should remain out of
 scope until their own task contract exists.
+
+## 2026-07-13 — HALF-Work P1 follow-up: sensor compensation and rotating advice
+
+**Scope.** Refine the P1 homepage metadata and environment support card while
+leaving P2–P4 deferred.
+
+**Change.** Moved the AI cache/warning time from the `AI USAGE` header to the
+percentage row and removed the `used` label. Added a centralized default
+`AHT20_TEMPERATURE_OFFSET_C = -6.0f` at the sensor boundary; humidity remains
+unchanged. Replaced the environment-derived footer advice with `今日建议：...`,
+rotating every 10 seconds between the existing model suggestion and message
+strings. Updated only the P1 mockup instances and documented the -6°C preview
+assumption.
+
+**Evidence.** Added host coverage for the AHT20 compensation and advice
+rotation. `desknest_test` passed all 69 test cases, and the `DeskNest` firmware
+build completed successfully. No board flash or physical K10 visual
+acceptance is claimed; the local `file://` preview remains blocked from
+automated refresh/screenshot by browser policy.
+
+**HALF-Work feedback.** Hardware compensation belongs at the sensor/data
+boundary so every page receives the corrected value. A small rotating content
+rule should consume existing model-owned strings and be tested independently;
+it should not become hidden business policy inside the renderer.

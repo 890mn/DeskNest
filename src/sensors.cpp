@@ -82,7 +82,9 @@ void Sensors::readAht20_() {
     float t = aht.getData(AHT20::eAHT20TempC);
     float h = aht.getData(AHT20::eAHT20HumiRH);
     _aht.valid        = (t > -40.0f) && (h >= 0.0f);
-    _aht.temperatureC = t;
+    _aht.temperatureC = _aht.valid
+        ? dn_apply_aht20_temperature_compensation(t)
+        : t;
     _aht.humidityPct  = h;
     _aht.fetchedAtMs  = millis();
 }

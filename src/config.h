@@ -202,6 +202,12 @@ namespace defaults {
     constexpr uint32_t SYNC_BS_AMBIENT_MS       = 60 * 60 * 1000;  // 60 min
     constexpr uint32_t SYNC_RT_ACTIVE_MS        = 5 * 60 * 1000;   // 5 min
 
+    // K10 板载 AHT20 温度读数校准：统一在传感器边界补偿，默认下调 6°C。
+    constexpr float    AHT20_TEMPERATURE_OFFSET_C = -6.0f;
+
+    // 首页“今日建议”在已有模型文案之间轮换的周期。
+    constexpr uint32_t T_HOME_DAILY_ADVICE_ROTATE_MS = 10 * 1000;
+
     // 翻面 / 旋转 / 摇动滞回
     constexpr uint16_t T_ROTATE_STABLE_MS       = 400;
     constexpr uint16_t T_FACE_DOWN_STABLE_MS    = 800;
