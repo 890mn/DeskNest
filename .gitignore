@@ -24,7 +24,8 @@ docs/control/*-private.md
 docs/control/WORKLOG.md
 
 # HALF-Work transient task and local runtime files
-.tasks/
+.tasks/*
+!.tasks/ACTIVE_TASK_EXAMPLE.md
 .codex/
 *.local.md
 
