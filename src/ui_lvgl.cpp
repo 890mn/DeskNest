@@ -50,6 +50,7 @@ static constexpr uint32_t C_BOOT      = 0xE16811;
 static lv_style_t sty_plain;
 static lv_style_t sty_card;
 static lv_style_t sty_text24;
+static lv_style_t sty_advice24;
 static lv_style_t sty_text16;
 static lv_style_t sty_ascii14;
 static lv_style_t sty_label16;
@@ -177,6 +178,10 @@ static void style_init_once() {
     lv_style_init(&sty_text24);
     lv_style_set_text_color(&sty_text24, lv_color_hex(C_TEXT));
     lv_style_set_text_font(&sty_text24, font_cn_title());
+
+    lv_style_init(&sty_advice24);
+    lv_style_set_text_color(&sty_advice24, lv_color_hex(C_DIM));
+    lv_style_set_text_font(&sty_advice24, font_cn_title());
 
     lv_style_init(&sty_text16);
     lv_style_set_text_color(&sty_text16, lv_color_hex(C_TEXT));
@@ -813,6 +818,8 @@ static void build_overview() {
     lv_obj_set_flex_align(ai_head, LV_FLEX_ALIGN_SPACE_BETWEEN,
                           LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     po.labels[1] = make_label(ai_head, &sty_brand16, "AI USAGE");
+    lv_obj_set_width(po.labels[1], 204);
+    lv_obj_set_style_text_align(po.labels[1], LV_TEXT_ALIGN_LEFT, 0);
 
     lv_obj_t* ai_total = lv_obj_create(ai);
     plain(ai_total);
@@ -824,7 +831,7 @@ static void build_overview() {
     po.labels[3] = make_label(ai_total, &sty_brand24, "0%");
     lv_obj_set_width(po.labels[3], 62);
     po.labels[4] = make_label(ai_total, &sty_dim16, "--");
-    lv_obj_set_width(po.labels[4], 112);
+    lv_obj_set_width(po.labels[4], 137);
     lv_obj_set_style_text_align(po.labels[4], LV_TEXT_ALIGN_RIGHT, 0);
     make_track(ai, 204, 8, &po.bars[0]);
 
@@ -887,7 +894,7 @@ static void build_overview() {
         po.labels[13 + i] = make_label(metrics, &sty_text16, "--");
         lv_obj_set_width(po.labels[13 + i], 65);
     }
-    po.labels[16] = make_label(environment, &sty_dim16, "sensor unavailable");
+    po.labels[16] = make_label(environment, &sty_advice24, "sensor unavailable");
     lv_obj_set_width(po.labels[16], 204);
 
     po.built = true;
