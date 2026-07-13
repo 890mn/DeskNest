@@ -1,0 +1,979 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>栖屏 DeskNest — UI 形态预览 v2</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    /* === Design Tokens（docs/ui-design-proposal.md §3） === */
+    --bg:          #0F1419;
+    --bg-elevated: #141B22;
+    --card:        #1A2128;
+    --card-hover:  #222B34;
+    --line:        #2A3447;
+    --line-soft:   #1F2730;
+
+    --text:        #ECE8DC;
+    --label:       #8B95A8;
+    --dim:         #5A6478;
+
+    --brand:       #9CB89B;
+    --brand-deep:  #7A9A7B;
+    --brand-soft:  #B8CFB7;
+
+    --accent-sand: #D4B896;
+    --accent-blue: #A8B5C4;
+    --accent-pink: #D4A5A5;
+
+    --state-ok:    #9CB89B;
+    --state-warm:  #D4B896;
+    --state-cool:  #A8B5C4;
+    --state-alert: #C97C7C;
+    --state-off:   #5A6478;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: #0a0d11;
+    color: var(--text);
+    font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    min-height: 100vh;
+    padding: 32px 20px 80px;
+  }
+  .page { max-width: 1280px; margin: 0 auto; }
+
+  header.hero {
+    margin-bottom: 40px;
+    border-left: 3px solid var(--brand);
+    padding-left: 16px;
+  }
+  header.hero h1 {
+    font-size: 26px; font-weight: 500;
+    margin: 0 0 6px; letter-spacing: 1px;
+  }
+  header.hero p {
+    font-size: 13px; color: var(--label);
+    margin: 3px 0; max-width: 720px; line-height: 1.7;
+  }
+  header.hero p.legacy-note { color: var(--accent-sand); }
+  header.hero .slogan { color: var(--brand); font-size: 12px; margin-top: 12px; letter-spacing: 2px; }
+
+  /* === 设备框：240×320 真实像素，物理圆角很小（约 4px） === */
+  .device {
+    width: 240px;
+    height: 320px;
+    background: var(--bg);
+    border-radius: 4px;          /* K10 实际圆角很小 */
+    position: relative;
+    overflow: hidden;
+    flex-shrink: 0;
+    box-shadow: 0 0 0 1px #1a1f26;
+  }
+  .device .label {
+    position: absolute; top: -22px; left: 0;
+    font-size: 11px; color: var(--label); letter-spacing: 1px;
+  }
+  .device .meta {
+    position: absolute; bottom: -20px; left: 0; right: 0;
+    text-align: center; font-size: 10px; color: var(--dim);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, 280px);
+    gap: 56px 24px;
+    align-items: start;
+  }
+  .cell { position: relative; padding-top: 22px; padding-bottom: 22px; }
+
+  /* === 通用页面元素 === */
+  .accent-bar { height: 2px; background: var(--brand); }
+  .divider { height: 1px; background: var(--line); }
+  .divider.soft { background: var(--line-soft); }
+  .brand-bar { width: 4px; background: var(--brand); border-radius: 1px; }
+
+  /* === 顶栏：22px，删除 accent-bar 与 dot nav === */
+  .header-row {
+    height: 22px;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 10px;
+  }
+  .header-row .brand { font-size: 13px; color: var(--text); letter-spacing: .3px; font-weight: 500; }
+  .header-row .brand .sub { color: var(--dim); font-weight: 400; margin-left: 4px; }
+  .header-row .page {
+    font-size: 12px; color: var(--label); letter-spacing: .3px;
+    flex: 1;                /* 让 page 成为 flex item 并撑满剩余空间 */
+    text-align: right;      /* 文字在 page 内部右对齐 → 所有页名右边缘 = padding-right */
+  }
+
+  /* 4 页底部小白条（iOS Home Indicator 风格）*/
+  .home-bar {
+    position: absolute;
+    left: 0; right: 0; bottom: 6px;
+    height: 6px;
+    display: flex; align-items: center; justify-content: center; gap: 4px;
+    pointer-events: none;
+  }
+  .home-bar span {
+    width: 10px; height: 3px; background: var(--line); border-radius: 1.5px;
+  }
+  .home-bar span.on { background: var(--brand); }
+
+  /* 顶栏+dot+divider 总占 30px (8+22+4+1) — 节省 10px 给内容 */
+  .header-stack { display: flex; flex-direction: column; }
+  .header-stack .divider { order: 99; }
+
+  /* === 内容区起始 y=30 === */
+  .content { padding: 8px 10px 0; }
+
+  /* === 文字档位 === */
+  .d1 { font-size: 22px; line-height: 26px; color: var(--text); font-variant-numeric: tabular-nums; }
+  .d2 { font-size: 15px; line-height: 20px; color: var(--brand); letter-spacing: .3px; }
+  .d3 { font-size: 11px; line-height: 14px; color: var(--label); letter-spacing: .5px; }
+  .d4 { font-size: 11px; line-height: 14px; color: var(--dim); }
+
+  .status-dot {
+    display: inline-block; width: 5px; height: 5px; border-radius: 50%;
+    background: var(--brand);
+    margin-right: 5px; vertical-align: middle;
+  }
+  .status-dot.warm { background: var(--state-warm); }
+  .status-dot.cool { background: var(--state-cool); }
+  .status-dot.alert { background: var(--state-alert); }
+  .status-dot.off { background: var(--state-off); }
+
+  .progress {
+    height: 8px; background: var(--line-soft); border-radius: 1px;
+    position: relative; overflow: hidden;
+  }
+  .progress > i {
+    position: absolute; left: 0; top: 0; bottom: 0;
+    background: var(--state-ok); border-radius: 1px;
+    transition: width .3s ease;
+  }
+  .progress.warm > i { background: var(--state-warm); }
+  .progress.alert > i { background: var(--state-alert); }
+
+  .card {
+    background: var(--card);
+    border-radius: 3px;
+    padding: 8px 10px;
+  }
+  .card.active { border-left: 3px solid var(--brand); padding-left: 7px; }
+  .card.alert { border-left: 3px solid var(--state-alert); padding-left: 7px; }
+
+  .stat-row { display: flex; gap: 12px; align-items: baseline; }
+  .stat-row .stat { display: flex; align-items: baseline; gap: 3px; }
+  .stat-row .stat .v { font-size: 14px; color: var(--text); font-variant-numeric: tabular-nums; }
+  .stat-row .stat .u { font-size: 9px; color: var(--dim); }
+  .stat-row .stat .g { font-size: 9px; color: var(--label); margin-left: 2px; }
+
+  .pill { display: inline-flex; align-items: center; font-size: 11px; color: var(--text); margin-right: 8px; }
+  .pill .d4 { color: var(--label); margin-left: 3px; }
+
+  .pct {
+    font-size: 22px; line-height: 26px; font-variant-numeric: tabular-nums;
+    color: var(--text);
+  }
+  .pct.ok { color: var(--state-ok); }
+  .pct.warm { color: var(--state-warm); }
+  .pct.alert { color: var(--state-alert); }
+
+  /* 8x8 icon —— CSS mask 模拟 */
+  .icon8 {
+    display: inline-block; width: 10px; height: 10px; flex-shrink: 0;
+    background: currentColor;
+    -webkit-mask-size: contain; mask-size: contain;
+    -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+    -webkit-mask-position: center; mask-position: center;
+    vertical-align: middle;
+  }
+  .icon8.temp   { -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><rect x='4' y='1' width='2' height='6' rx='1' fill='black'/><circle cx='5' cy='8' r='1.6' fill='black'/></svg>"); mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><rect x='4' y='1' width='2' height='6' rx='1' fill='black'/><circle cx='5' cy='8' r='1.6' fill='black'/></svg>"); }
+  .icon8.water  { -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><path d='M5 1 C3 4 2 6 2 7 a3 3 0 0 0 6 0 C8 6 7 4 5 1 Z' fill='black'/></svg>"); mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><path d='M5 1 C3 4 2 6 2 7 a3 3 0 0 0 6 0 C8 6 7 4 5 1 Z' fill='black'/></svg>"); }
+  .icon8.sun    { -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><circle cx='5' cy='5' r='2' fill='black'/><g stroke='black' stroke-width='1' stroke-linecap='round'><line x1='5' y1='0.5' x2='5' y2='2'/><line x1='5' y1='8' x2='5' y2='9.5'/><line x1='0.5' y1='5' x2='2' y2='5'/><line x1='8' y1='5' x2='9.5' y2='5'/></g></svg>"); mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><circle cx='5' cy='5' r='2' fill='black'/><g stroke='black' stroke-width='1' stroke-linecap='round'><line x1='5' y1='0.5' x2='5' y2='2'/><line x1='5' y1='8' x2='5' y2='9.5'/><line x1='0.5' y1='5' x2='2' y2='5'/><line x1='8' y1='5' x2='9.5' y2='5'/></g></svg>"); }
+  .icon8.batt   { -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><rect x='0.5' y='3' width='8' height='5' rx='1' fill='none' stroke='black' stroke-width='1'/><rect x='8.5' y='5' width='1.2' height='1.5' fill='black'/><rect x='1.5' y='4' width='3' height='3' fill='black'/></svg>"); mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><rect x='0.5' y='3' width='8' height='5' rx='1' fill='none' stroke='black' stroke-width='1'/><rect x='8.5' y='5' width='1.2' height='1.5' fill='black'/><rect x='1.5' y='4' width='3' height='3' fill='black'/></svg>"); }
+  .icon8.wifi   { -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><path d='M1 4 a6 6 0 0 1 8 0' fill='none' stroke='black' stroke-width='1.2' stroke-linecap='round'/><path d='M2.5 6 a4 4 0 0 1 5 0' fill='none' stroke='black' stroke-width='1.2' stroke-linecap='round'/><circle cx='5' cy='8' r='1' fill='black'/></svg>"); mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><path d='M1 4 a6 6 0 0 1 8 0' fill='none' stroke='black' stroke-width='1.2' stroke-linecap='round'/><path d='M2.5 6 a4 4 0 0 1 5 0' fill='none' stroke='black' stroke-width='1.2' stroke-linecap='round'/><circle cx='5' cy='8' r='1' fill='black'/></svg>"); }
+  .icon8.sync   { -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><path d='M2 5 a3 3 0 0 1 5.5 -1.5 L8 3 M8 5 a3 3 0 0 1 -5.5 1.5 L2 7' fill='none' stroke='black' stroke-width='1.2' stroke-linecap='round'/></svg>"); mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><path d='M2 5 a3 3 0 0 1 5.5 -1.5 L8 3 M8 5 a3 3 0 0 1 -5.5 1.5 L2 7' fill='none' stroke='black' stroke-width='1.2' stroke-linecap='round'/></svg>"); }
+  .icon8.nest   { -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><path d='M2 8 Q5 1 8 8 Z' fill='black'/></svg>"); mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><path d='M2 8 Q5 1 8 8 Z' fill='black'/></svg>"); }
+  .icon8.coin   { -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><circle cx='5' cy='5' r='4' fill='none' stroke='black' stroke-width='1.2'/><circle cx='5' cy='5' r='2' fill='none' stroke='black' stroke-width='1'/></svg>"); mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><circle cx='5' cy='5' r='4' fill='none' stroke='black' stroke-width='1.2'/><circle cx='5' cy='5' r='2' fill='none' stroke='black' stroke-width='1'/></svg>"); }
+  .icon8.arrow  { -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><path d='M2 5 L7 5 M5 3 L7 5 L5 7' fill='none' stroke='black' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'/></svg>"); mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><path d='M2 5 L7 5 M5 3 L7 5 L5 7' fill='none' stroke='black' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'/></svg>"); }
+  .icon8.chef   { -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><path d='M2 4 a2 2 0 1 1 2 2 v1 h-2 z M6 4 a2 2 0 1 1 2 2 v1 h-2 z M3 7 h4 v2 h-4 z' fill='black'/></svg>"); mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><path d='M2 4 a2 2 0 1 1 2 2 v1 h-2 z M6 4 a2 2 0 1 1 2 2 v1 h-2 z M3 7 h4 v2 h-4 z' fill='black'/></svg>"); }
+
+  /* === 链接 === */
+  .links { display: flex; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+  .links a {
+    color: var(--brand); text-decoration: none; font-size: 12px;
+    padding: 5px 10px; border: 1px solid var(--brand); border-radius: 2px;
+  }
+  .links a:hover { background: var(--brand); color: var(--bg); }
+
+  h2 {
+    font-size: 12px; font-weight: 400; color: var(--label);
+    letter-spacing: 2px; text-transform: uppercase;
+    margin: 48px 0 20px;
+    border-bottom: 1px solid var(--line); padding-bottom: 6px;
+  }
+
+  /* ============== 页面特定样式 ============== */
+
+  /* P1 总览 —— "morning dashboard" 场景 */
+  .greeting { font-size: 11px; color: var(--label); margin-bottom: 2px; }
+  .greeting b { color: var(--text); font-weight: 500; }
+
+  .scene-p1 { display: flex; flex-direction: column; gap: 10px; }
+  .scene-p1.p1-redesign { gap: 5px; }
+  .scene-p1 .p1-card {
+    background: var(--card); border-radius: 3px;
+    padding: 8px 10px; display: flex; flex-direction: column; gap: 3px;
+  }
+  .scene-p1 .p1-ai-card { height: 151px; }
+  .scene-p1 .p1-environment-card { height: 97px; }
+  .scene-p1 .p1-card-head {
+    height: 18px; display: flex; align-items: center; justify-content: space-between;
+  }
+  .scene-p1 .p1-card-title {
+    width: 100%; text-align: left;
+    font-size: 11px; line-height: 14px; color: var(--brand); letter-spacing: .5px;
+  }
+  .scene-p1 .p1-card-state {
+    flex: 1; text-align: right; font-size: 11px; line-height: 14px; color: var(--dim);
+  }
+  .scene-p1 .p1-total {
+    height: 32px; display: flex; align-items: center; gap: 5px;
+  }
+  .scene-p1 .p1-total-value {
+    width: 62px; color: var(--brand); font-size: 24px; line-height: 28px;
+    font-variant-numeric: tabular-nums;
+  }
+  .scene-p1 .p1-total-label {
+    flex: 1; text-align: right; color: var(--dim); font-size: 11px;
+  }
+  .scene-p1 .p1-progress {
+    height: 8px; background: var(--line-soft); border-radius: 1px; overflow: hidden;
+  }
+  .scene-p1 .p1-progress > i {
+    display: block; height: 100%; background: var(--state-ok); border-radius: 1px;
+  }
+  .scene-p1 .p1-progress.warm > i { background: var(--state-warm); }
+  .scene-p1 .p1-provider {
+    height: 22px; display: flex; align-items: center; gap: 4px;
+  }
+  .scene-p1 .p1-provider .name {
+    width: 70px; flex-shrink: 0; font-size: 11px; color: var(--label);
+  }
+  .scene-p1 .p1-provider .bar {
+    width: 88px; height: 6px; background: var(--line); border-radius: 1px; overflow: hidden;
+  }
+  .scene-p1 .p1-provider .bar > i {
+    display: block; height: 100%; background: var(--state-ok); border-radius: 1px;
+  }
+  .scene-p1 .p1-provider .bar.warm > i { background: var(--state-warm); }
+  .scene-p1 .p1-provider .pct {
+    width: 34px; flex-shrink: 0; text-align: right; font-size: 11px;
+    color: var(--text); font-variant-numeric: tabular-nums;
+  }
+  .scene-p1 .p1-sync {
+    height: 18px; display: flex; align-items: center; justify-content: space-between;
+    color: var(--dim); font-size: 11px; line-height: 14px;
+  }
+  .scene-p1 .p1-metrics { height: 26px; display: flex; align-items: center; gap: 4px; }
+  .scene-p1 .p1-metric {
+    width: 65px; color: var(--text); font-size: 14px; line-height: 18px;
+    font-variant-numeric: tabular-nums;
+  }
+  .scene-p1 .p1-advice {
+    height: 24px; color: var(--dim); font-size: 16px; line-height: 20px;
+    text-align: left;
+  }
+  .scene-p1 .hero {
+    display: flex; align-items: flex-end; gap: 4px;
+    margin-top: 4px;
+  }
+  .scene-p1 .hero .big {
+    font-size: 30px; line-height: 32px;
+    color: var(--text); font-variant-numeric: tabular-nums;
+    letter-spacing: -.5px;
+  }
+  .scene-p1 .hero .unit { font-size: 14px; color: var(--label); padding-bottom: 4px; }
+
+  .nudge {
+    background: var(--bg-elevated);
+    border-radius: 3px;
+    padding: 7px 10px;
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; color: var(--text);
+  }
+  .nudge .d4 { color: var(--label); }
+
+  /* P2 AI 用量 —— "budget health" 场景 */
+  .scene-p2 { display: flex; flex-direction: column; gap: 8px; }
+  .scene-p2 .topline {
+    display: flex; align-items: baseline; justify-content: space-between;
+  }
+  .scene-p2 .topline .pct { font-size: 24px; line-height: 28px; }
+  .scene-p2 .topline .label { font-size: 11px; color: var(--label); }
+  .scene-p2 .budget-bar {
+    height: 14px; background: var(--line-soft); border-radius: 2px; position: relative; overflow: hidden;
+  }
+  .scene-p2 .budget-bar > i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--state-ok); border-radius: 2px; }
+  .scene-p2 .provider {
+    display: flex; align-items: center; gap: 8px;
+  }
+  .scene-p2 .provider .name { font-size: 11px; color: var(--label); width: 56px; flex-shrink: 0; }
+  .scene-p2 .provider .bar { flex: 1; }
+  .scene-p2 .provider .pct { font-size: 12px; min-width: 32px; text-align: right; }
+
+  /* P3 今天吃什么 —— 风格与 P1/P2 卡片统一 */
+  .scene-p3 { display: flex; flex-direction: column; gap: 8px; }
+  /* ask 改用 P1 greeting 节奏：11px / --label / b 用 --text */
+  .scene-p3 .ask {
+    font-size: 11px; color: var(--label); margin-bottom: 2px; line-height: 14px;
+  }
+  .scene-p3 .ask b { color: var(--text); font-weight: 500; }
+  /* last-meal 走 greeting 衍生样式（与 P1 greeting 同色阶）*/
+  .scene-p3 .last-meal {
+    font-size: 10px; color: var(--dim); letter-spacing: .3px;
+    display: flex; align-items: center; gap: 4px;
+    padding-left: 0;
+  }
+  /* candidates 容器，gap 改成 6px 与 P1/P2 卡片间距一致 */
+  .scene-p3 .candidates {
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  /* 单张候选：直接复用全局 .card 类，不再写自己的 padding/bg */
+  .scene-p3 .cand {
+    display: flex; align-items: center; gap: 8px;
+  }
+  .scene-p3 .cand .emoji {
+    font-size: 16px; width: 18px; text-align: center; flex-shrink: 0;
+    line-height: 18px;
+  }
+  .scene-p3 .cand .name {
+    font-size: 13px; color: var(--text); flex: 1; font-weight: 500;
+  }
+  .scene-p3 .cand .tag {
+    font-size: 9px; color: var(--label);
+    border: 1px solid var(--line); padding: 1px 5px; border-radius: 2px;
+  }
+  .scene-p3 .cand.featured .tag { color: var(--brand); border-color: var(--brand); }
+
+  /* === P3 三种风格（无 emoji） === */
+
+  /* 风格 A: 卡式 + 指标填空 —— 每张卡塞 3 个小指标 */
+  .scene-p3.style-a .cand {
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .scene-p3.style-a .cand .name-row {
+    display: flex; justify-content: space-between; align-items: baseline;
+  }
+  .scene-p3.style-a .cand .name {
+    font-size: 13px; color: var(--text); font-weight: 500;
+  }
+  .scene-p3.style-a .cand .num {
+    font-size: 10px; color: var(--label);
+    font-variant-numeric: tabular-nums;
+  }
+  .scene-p3.style-a .cand .metrics {
+    display: flex; gap: 10px; align-items: baseline;
+    font-size: 10px; color: var(--dim);
+  }
+  .scene-p3.style-a .cand .metrics .m {
+    display: flex; align-items: baseline; gap: 2px;
+  }
+  .scene-p3.style-a .cand .metrics .m .v {
+    color: var(--label);
+    font-variant-numeric: tabular-nums;
+  }
+  .scene-p3.style-a .cand .tag {
+    margin-left: auto; align-self: flex-start;
+  }
+
+  /* 风格 B: 行式 + 评分条 —— 信息密度最高，每行 28px */
+  .scene-p3.style-b .candidates { gap: 4px; }
+  .scene-p3.style-b .cand {
+    display: grid;
+    grid-template-columns: 1fr auto 50px;
+    grid-template-rows: auto auto;
+    gap: 1px 8px;
+    align-items: center;
+  }
+  .scene-p3.style-b .cand .name {
+    font-size: 12px; color: var(--text); font-weight: 500;
+    grid-column: 1; grid-row: 1;
+  }
+  .scene-p3.style-b .cand .tag {
+    font-size: 9px; color: var(--label);
+    border: 1px solid var(--line); padding: 0px 4px; border-radius: 2px;
+    grid-column: 2; grid-row: 1;
+  }
+  .scene-p3.style-b .cand .score {
+    font-size: 10px; color: var(--brand);
+    font-variant-numeric: tabular-nums;
+    grid-column: 3; grid-row: 1; text-align: right;
+  }
+  .scene-p3.style-b .cand .sub {
+    font-size: 9px; color: var(--dim);
+    grid-column: 1 / -1; grid-row: 2;
+  }
+
+  /* 风格 C: 分组列表 —— 按类型分组 */
+  .scene-p3.style-c .group {
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .scene-p3.style-c .group-head {
+    font-size: 9px; color: var(--dim); letter-spacing: 1.2px;
+    text-transform: uppercase;
+    margin: 6px 0 1px;
+  }
+  .scene-p3.style-c .group-head:first-child { margin-top: 2px; }
+  .scene-p3.style-c .cand {
+    display: flex;
+    align-items: center;
+    height: 24px;
+    padding: 0 4px;
+  }
+  .scene-p3.style-c .cand .name {
+    flex: 1; min-width: 0;
+    font-size: 12px; color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .scene-p3.style-c .cand .price {
+    flex: 0 0 auto;
+    width: 38px;
+    font-size: 11px; color: var(--label);
+    text-align: right;
+  }
+  .scene-p3.style-c .cand .score {
+    flex: 0 0 auto;
+    width: 30px;
+    font-size: 11px; color: var(--brand);
+    font-weight: 600;
+    text-align: right;
+  }
+
+  .scene-p3 .dice-hint {
+    font-size: 10px; color: var(--dim); text-align: center; margin-top: 6px;
+  }
+  .scene-p3 .dice-hint b { color: var(--brand); }
+
+  /* P4 设置 —— "personal preferences" 场景，分组 */
+  .scene-p4 { display: flex; flex-direction: column; gap: 0; padding: 0 10px; }
+  .scene-p4 .group-head {
+    font-size: 9px; color: var(--dim); letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin: 8px 0 4px;
+  }
+  .scene-p4 .group-head:first-child { margin-top: 4px; }
+  .scene-p4 .row {
+    display: flex; align-items: center; justify-content: space-between;
+    height: 28px; border-bottom: 1px solid var(--line-soft);
+  }
+  .scene-p4 .row:last-child { border-bottom: none; }
+  .scene-p4 .row .l { font-size: 12px; color: var(--text); }
+  .scene-p4 .row .v { font-size: 12px; color: var(--label); display: flex; align-items: center; gap: 4px; }
+  .scene-p4 .row .v .icon8 { color: var(--dim); }
+  .scene-p4 .row .arrow { color: var(--brand); font-size: 12px; }
+  .scene-p4 .toggle { width: 24px; height: 14px; background: var(--line); border-radius: 7px; position: relative; }
+  .scene-p4 .toggle.on { background: var(--brand); }
+  .scene-p4 .toggle::after { content: ""; position: absolute; width: 10px; height: 10px; background: var(--bg); border-radius: 50%; top: 2px; left: 2px; transition: left .2s; }
+  .scene-p4 .toggle.on::after { left: 12px; }
+  .scene-p4 .danger {
+    margin-top: 8px; padding: 6px 8px;
+    border: 1px solid var(--state-alert); border-radius: 2px;
+    font-size: 10px; color: var(--state-alert);
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="hero">
+    <h1>栖屏 DeskNest</h1>
+    <p>基于行空板 K10（240×320, 3:4）的小屏桌面助手。本轮 4 页：P1 总览 · P2 AI 用量 · P3 今天吃什么 · P4 设置。所有元素按真实像素比例。</p>
+    <p>本轮调整：① 顶栏从 30px 压到 22px  ② 设备框圆角改为 4px 接近真实 K10  ③ P1 改为 AI 使用主卡、环境支持卡的上下 3:2  ④ 4 页按"用户场景"重新设计内容  ⑤ 新增 P3「今天吃什么」（本地硬编码）。</p>
+    <p class="legacy-note">当前验收焦点：P1 已与固件首页 renderer 对齐；P2–P4 为历史预览，暂不作为当前实现验收依据，待 HALF-Work 后续任务再同步。P1 温度按 AHT20 默认 -6°C 补偿显示。</p>
+    <p class="slogan">栖于桌面 · 息于常亮之间</p>
+  </header>
+
+  <h2>P1 · 竖屏总览 · AI 使用主卡场景</h2>
+  <div class="grid">
+    <div class="cell">
+      <div class="device">
+        <div class="label">P1 / 4</div>
+        <div class="header-row">
+          <div class="brand">栖屏<span class="sub">DeskNest</span></div>
+          <div class="page">总览</div>
+        </div>
+        <div class="divider"></div>
+        <div class="home-bar"><span class="on"></span><span></span><span></span><span></span></div>
+        <div class="content scene-p1 p1-redesign">
+          <div class="p1-card p1-ai-card">
+            <div class="p1-card-head"><span class="p1-card-title">AI USAGE</span></div>
+            <div class="p1-total"><span class="p1-total-value">72%</span><span class="p1-total-label">cached</span></div>
+            <div class="p1-progress"><i style="width:72%"></i></div>
+            <div class="p1-provider"><span class="name">Codex</span><span class="bar"><i style="width:72%"></i></span><span class="pct">72%</span></div>
+            <div class="p1-provider"><span class="name">MiniMax</span><span class="bar warm"><i style="width:86%"></i></span><span class="pct">86%</span></div>
+            <div class="p1-sync"><span>NEXT REFRESH</span><span>in 30s</span></div>
+          </div>
+          <div class="p1-card p1-environment-card">
+            <div class="p1-card-head"><span class="p1-card-title">ENVIRONMENT</span><span class="p1-card-state">良好</span></div>
+            <div class="p1-metrics"><span class="p1-metric">24.5°C</span><span class="p1-metric">58%</span><span class="p1-metric">240lx</span></div>
+            <div class="p1-advice">保持专注</div>
+          </div>
+        </div>
+        <div class="meta">240 × 320</div>
+      </div>
+    </div>
+
+    <!-- P1 variant: 夜晚 -->
+    <div class="cell">
+      <div class="device">
+        <div class="label">P1 · 夜晚</div>
+        <div class="header-row">
+          <div class="brand">栖屏<span class="sub">DeskNest</span></div>
+          <div class="page">总览</div>
+        </div>
+        <div class="divider"></div>
+        <div class="home-bar"><span class="on"></span><span></span><span></span><span></span></div>
+        <div class="content scene-p1 p1-redesign">
+          <div class="p1-card p1-ai-card">
+            <div class="p1-card-head"><span class="p1-card-title">AI USAGE</span></div>
+            <div class="p1-total"><span class="p1-total-value" style="color:var(--state-warm)">45%</span><span class="p1-total-label" style="color:var(--state-warm)">Codex tight</span></div>
+            <div class="p1-progress warm"><i style="width:45%"></i></div>
+            <div class="p1-provider"><span class="name">Codex</span><span class="bar warm"><i style="width:45%"></i></span><span class="pct">45%</span></div>
+            <div class="p1-provider"><span class="name">MiniMax</span><span class="bar"><i style="width:45%"></i></span><span class="pct">45%</span></div>
+            <div class="p1-sync"><span>NEXT REFRESH</span><span>in 30s</span></div>
+          </div>
+          <div class="p1-card p1-environment-card">
+            <div class="p1-card-head"><span class="p1-card-title">ENVIRONMENT</span><span class="p1-card-state">一般</span></div>
+            <div class="p1-metrics"><span class="p1-metric">21.0°C</span><span class="p1-metric">62%</span><span class="p1-metric">85lx</span></div>
+            <div class="p1-advice">今天额度还够</div>
+          </div>
+        </div>
+        <div class="meta">240 × 320</div>
+      </div>
+    </div>
+  </div>
+
+  <h2>P2 · AI 用量 · 预算健康场景</h2>
+  <div class="grid">
+    <div class="cell">
+      <div class="device">
+        <div class="label">P2 / 4</div>
+        <div class="header-row">
+          <div class="brand">栖屏<span class="sub">DeskNest</span></div>
+          <div class="page">AI 用量</div>
+        </div>
+        <div class="divider"></div>
+        <div class="home-bar"><span></span><span class="on"></span><span></span><span></span></div>
+        <div class="content scene-p2">
+          <div class="topline">
+            <span class="label">本月剩余</span>
+            <span class="pct ok">72%</span>
+          </div>
+          <div class="budget-bar"><i style="width:72%"></i></div>
+          <div style="display:flex;justify-content:space-between">
+            <span class="d4">3 个服务 · 已用 28%</span>
+            <span class="d4">12 min 前同步</span>
+          </div>
+          <div class="divider soft" style="margin:6px 0"></div>
+          <div class="provider">
+            <span class="name">Codex</span>
+            <div class="bar"><div class="progress"><i style="width:58%"></i></div></div>
+            <span class="pct ok" style="font-size:11px">58%</span>
+          </div>
+          <div class="provider">
+            <span class="name">ChatGPT</span>
+            <div class="bar"><div class="progress"><i style="width:32%"></i></div></div>
+            <span class="pct ok" style="font-size:11px">68%</span>
+          </div>
+          <div class="provider">
+            <span class="name">MiniMax</span>
+            <div class="bar"><div class="progress warm"><i style="width:86%"></i></div></div>
+            <span class="pct warm" style="font-size:11px">14%</span>
+          </div>
+          <div class="divider soft" style="margin:6px 0"></div>
+          <div style="display:flex;gap:8px;font-size:10px">
+            <span class="d4" style="display:flex;align-items:center;gap:3px"><span class="icon8 sync" style="color:var(--dim)"></span>cc-switch 同步</span>
+          </div>
+          <div class="nudge" style="background:rgba(212,184,150,.08)">
+            <span class="status-dot warm"></span>
+            <span style="font-size:11px">MiniMax 偏紧</span>
+          </div>
+        </div>
+        <div class="meta">240 × 320</div>
+      </div>
+    </div>
+  </div>
+
+  <h2>P3 · 今天吃什么 · 3 种无 emoji 风格对比</h2>
+  <div class="grid">
+
+    <!-- ===== 风格 A: 卡式 + 3 指标 ===== -->
+    <div class="cell">
+      <div class="device">
+        <div class="label">A · 卡式 + 指标</div>
+        <div class="header-row">
+          <div class="brand">栖屏<span class="sub">DeskNest</span></div>
+          <div class="page">今天吃什么</div>
+        </div>
+        <div class="divider"></div>
+        <div class="home-bar"><span></span><span></span><span class="on"></span><span></span></div>
+        <div class="content scene-p3 style-a">
+          <div class="ask">今天，<b>吃点热的</b>？</div>
+          <div class="last-meal">昨天 · 日式咖喱饭</div>
+          <div class="candidates">
+            <div class="card active cand">
+              <div class="name-row">
+                <span class="name">番茄牛腩面</span>
+                <span class="tag">推荐</span>
+              </div>
+              <div class="metrics">
+                <span class="m">🔥<span class="v">480</span>kcal</span>
+                <span class="m">⏱<span class="v">25</span>min</span>
+                <span class="m">¥<span class="v">28</span></span>
+              </div>
+            </div>
+            <div class="card cand">
+              <div class="name-row">
+                <span class="name">砂锅豆腐汤</span>
+                <span class="tag">热汤</span>
+              </div>
+              <div class="metrics">
+                <span class="m">🔥<span class="v">320</span>kcal</span>
+                <span class="m">⏱<span class="v">15</span>min</span>
+                <span class="m">¥<span class="v">22</span></span>
+              </div>
+            </div>
+            <div class="card cand">
+              <div class="name-row">
+                <span class="name">韩式泡菜锅</span>
+                <span class="tag">微辣</span>
+              </div>
+              <div class="metrics">
+                <span class="m">🔥<span class="v">510</span>kcal</span>
+                <span class="m">⏱<span class="v">30</span>min</span>
+                <span class="m">¥<span class="v">35</span></span>
+              </div>
+            </div>
+          </div>
+          <div class="dice-hint"><b>[A]</b> 重新抽 · <b>[B]</b> 记下吃了</div>
+        </div>
+        <div class="meta">A · 风格 1/3</div>
+      </div>
+    </div>
+
+    <!-- ===== 风格 B: 行式 + 评分条（密度最高） ===== -->
+    <div class="cell">
+      <div class="device">
+        <div class="label">B · 行式 + 评分</div>
+        <div class="header-row">
+          <div class="brand">栖屏<span class="sub">DeskNest</span></div>
+          <div class="page">今天吃什么</div>
+        </div>
+        <div class="divider"></div>
+        <div class="home-bar"><span></span><span></span><span class="on"></span><span></span></div>
+        <div class="content scene-p3 style-b">
+          <div class="ask">今天，<b>吃点热的</b>？</div>
+          <div class="last-meal">昨天 · 日式咖喱饭</div>
+          <div class="candidates">
+            <div class="card active cand">
+              <span class="name">番茄牛腩面</span>
+              <span class="tag">推荐</span>
+              <span class="score">8.4</span>
+              <span class="sub">热汤面 · 25min · ¥28</span>
+            </div>
+            <div class="card cand">
+              <span class="name">砂锅豆腐汤</span>
+              <span class="tag">清淡</span>
+              <span class="score">7.6</span>
+              <span class="sub">汤类 · 15min · ¥22</span>
+            </div>
+            <div class="card cand">
+              <span class="name">韩式泡菜锅</span>
+              <span class="tag">微辣</span>
+              <span class="score">8.1</span>
+              <span class="sub">火锅 · 30min · ¥35</span>
+            </div>
+            <div class="card cand">
+              <span class="name">葱油拌面</span>
+              <span class="tag">快手</span>
+              <span class="score">7.2</span>
+              <span class="sub">面食 · 10min · ¥12</span>
+            </div>
+            <div class="card cand">
+              <span class="name">麻辣香锅</span>
+              <span class="tag">重口</span>
+              <span class="score">8.7</span>
+              <span class="sub">干锅 · 35min · ¥42</span>
+            </div>
+          </div>
+          <div class="dice-hint"><b>[A]</b> 重新抽 · <b>[B]</b> 记下吃了</div>
+        </div>
+        <div class="meta">B · 风格 2/3</div>
+      </div>
+    </div>
+
+    <!-- ===== 风格 C: 分组列表 ===== -->
+    <div class="cell">
+      <div class="device">
+        <div class="label">C · 分组列表</div>
+        <div class="header-row">
+          <div class="brand">栖屏<span class="sub">DeskNest</span></div>
+          <div class="page">今天吃什么</div>
+        </div>
+        <div class="divider"></div>
+        <div class="home-bar"><span></span><span></span><span class="on"></span><span></span></div>
+        <div class="content scene-p3 style-c">
+          <div class="ask">今天，<b>吃点热的</b>？</div>
+          <div class="last-meal">昨天 · 日式咖喱饭</div>
+          <div class="group">
+            <div class="group-head">面食</div>
+            <div class="card cand">
+              <span class="name">番茄牛腩面</span>
+              <span class="price">¥28</span>
+              <span class="score">8.4</span>
+            </div>
+            <div class="card cand">
+              <span class="name">葱油拌面</span>
+              <span class="price">¥12</span>
+              <span class="score">7.2</span>
+            </div>
+          </div>
+          <div class="group">
+            <div class="group-head">汤锅</div>
+            <div class="card active cand">
+              <span class="name">砂锅豆腐汤</span>
+              <span class="price">¥22</span>
+              <span class="score">8.1</span>
+            </div>
+            <div class="card cand">
+              <span class="name">韩式泡菜锅</span>
+              <span class="price">¥35</span>
+              <span class="score">7.8</span>
+            </div>
+          </div>
+          <div class="group">
+            <div class="group-head">小炒</div>
+            <div class="card cand">
+              <span class="name">麻辣香锅</span>
+              <span class="price">¥42</span>
+              <span class="score">8.7</span>
+            </div>
+          </div>
+          <div class="dice-hint"><b>[A]</b> 重抽 · <b>[B]</b> 记下</div>
+        </div>
+        <div class="meta">C · 风格 3/3</div>
+      </div>
+    </div>
+
+  </div>
+
+  <h2>P4 · 设置 · 个人偏好场景</h2>
+  <div class="grid">
+    <div class="cell">
+      <div class="device">
+        <div class="label">P4 / 4</div>
+        <div class="header-row">
+          <div class="brand">栖屏<span class="sub">DeskNest</span></div>
+          <div class="page">设置</div>
+        </div>
+        <div class="divider"></div>
+        <div class="home-bar"><span></span><span></span><span></span><span class="on"></span></div>
+        <div class="content scene-p4">
+          <div class="group-head">显示</div>
+          <div class="row">
+            <span class="l">亮度</span>
+            <span class="v">跟随环境 <span class="arrow">›</span></span>
+          </div>
+          <div class="row">
+            <span class="l">深色主题</span>
+            <span class="v"><span class="toggle on"></span></span>
+          </div>
+          <div class="row">
+            <span class="l">密度</span>
+            <span class="v">标准 <span class="arrow">›</span></span>
+          </div>
+
+          <div class="group-head">连接</div>
+          <div class="row">
+            <span class="l">Wi-Fi</span>
+            <span class="v"><span class="icon8 wifi"></span> Home <span class="arrow">›</span></span>
+          </div>
+          <div class="row">
+            <span class="l">cc-switch</span>
+            <span class="v">192.168.1.5 <span class="arrow">›</span></span>
+          </div>
+          <div class="row">
+            <span class="l">后台同步</span>
+            <span class="v"><span class="toggle on"></span></span>
+          </div>
+
+          <div class="group-head">数据</div>
+          <div class="row">
+            <span class="l">上次记录</span>
+            <span class="v">13:30 <span class="arrow">›</span></span>
+          </div>
+          <div class="row">
+            <span class="l">菜单候选</span>
+            <span class="v">8 道 <span class="arrow">›</span></span>
+          </div>
+
+          <div class="danger">长按 [A+B] 恢复出厂</div>
+        </div>
+        <div class="meta">240 × 320</div>
+      </div>
+    </div>
+  </div>
+
+  <h2>所有页并排（4 页完整）</h2>
+  <div class="grid">
+    <!-- mini P1 -->
+    <div class="cell">
+      <div class="device" style="transform:scale(.92);transform-origin:top left;width:240px">
+        <div class="label">P1</div>
+        <div class="header-row">
+          <div class="brand">栖屏<span class="sub">DeskNest</span></div>
+          <div class="page">总览</div>
+        </div>
+        <div class="divider"></div>
+        <div class="home-bar"><span class="on"></span><span></span><span></span><span></span></div>
+        <div class="content scene-p1 p1-redesign">
+          <div class="p1-card p1-ai-card">
+            <div class="p1-card-head"><span class="p1-card-title">AI USAGE</span></div>
+            <div class="p1-total"><span class="p1-total-value">72%</span><span class="p1-total-label">cached</span></div>
+            <div class="p1-progress"><i style="width:72%"></i></div>
+            <div class="p1-provider"><span class="name">Codex</span><span class="bar"><i style="width:72%"></i></span><span class="pct">72%</span></div>
+            <div class="p1-provider"><span class="name">MiniMax</span><span class="bar warm"><i style="width:86%"></i></span><span class="pct">86%</span></div>
+            <div class="p1-sync"><span>NEXT REFRESH</span><span>in 30s</span></div>
+          </div>
+          <div class="p1-card p1-environment-card">
+            <div class="p1-card-head"><span class="p1-card-title">ENVIRONMENT</span><span class="p1-card-state">良好</span></div>
+            <div class="p1-metrics"><span class="p1-metric">24.5°C</span><span class="p1-metric">58%</span><span class="p1-metric">240lx</span></div>
+            <div class="p1-advice">保持专注</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- mini P2 -->
+    <div class="cell">
+      <div class="device" style="transform:scale(.92);transform-origin:top left;width:220px">
+        <div class="label">P2</div>
+        <div class="header-row">
+          <div class="brand">栖屏<span class="sub">DeskNest</span></div>
+          <div class="page">AI 用量</div>
+        </div>
+        <div class="divider"></div>
+        <div class="home-bar"><span></span><span class="on"></span><span></span><span></span></div>
+        <div class="content scene-p2">
+          <div class="topline">
+            <span class="label">本月剩余</span>
+            <span class="pct ok">72%</span>
+          </div>
+          <div class="budget-bar"><i style="width:72%"></i></div>
+          <div class="provider">
+            <span class="name">Codex</span>
+            <div class="bar"><div class="progress"><i style="width:58%"></i></div></div>
+            <span class="pct ok" style="font-size:11px">58%</span>
+          </div>
+          <div class="provider">
+            <span class="name">ChatGPT</span>
+            <div class="bar"><div class="progress"><i style="width:32%"></i></div></div>
+            <span class="pct ok" style="font-size:11px">68%</span>
+          </div>
+          <div class="provider">
+            <span class="name">MiniMax</span>
+            <div class="bar"><div class="progress warm"><i style="width:86%"></i></div></div>
+            <span class="pct warm" style="font-size:11px">14%</span>
+          </div>
+          <div class="nudge" style="background:rgba(212,184,150,.08)">
+            <span class="status-dot warm"></span>
+            <span style="font-size:10px">MiniMax 偏紧</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- mini P3 -->
+    <div class="cell">
+      <div class="device" style="transform:scale(.92);transform-origin:top left;width:220px">
+        <div class="label">P3</div>
+        <div class="header-row">
+          <div class="brand">栖屏<span class="sub">DeskNest</span></div>
+          <div class="page">今天吃什么</div>
+        </div>
+        <div class="divider"></div>
+        <div class="home-bar"><span></span><span></span><span class="on"></span><span></span></div>
+        <div class="content scene-p3 style-c">
+          <div class="ask">今天，<b>吃点热的</b>？</div>
+          <div class="last-meal">昨天 · 日式咖喱饭</div>
+          <div class="group">
+            <div class="group-head">面食</div>
+            <div class="card cand">
+              <span class="name">番茄牛腩面</span>
+              <span class="price">¥28</span>
+              <span class="score">8.4</span>
+            </div>
+            <div class="card cand">
+              <span class="name">葱油拌面</span>
+              <span class="price">¥12</span>
+              <span class="score">7.2</span>
+            </div>
+          </div>
+          <div class="group">
+            <div class="group-head">汤锅</div>
+            <div class="card active cand">
+              <span class="name">砂锅豆腐汤</span>
+              <span class="price">¥22</span>
+              <span class="score">8.1</span>
+            </div>
+            <div class="card cand">
+              <span class="name">韩式泡菜锅</span>
+              <span class="price">¥35</span>
+              <span class="score">7.8</span>
+            </div>
+          </div>
+          <div class="group">
+            <div class="group-head">小炒</div>
+            <div class="card cand">
+              <span class="name">麻辣香锅</span>
+              <span class="price">¥42</span>
+              <span class="score">8.7</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- mini P4 -->
+    <div class="cell">
+      <div class="device" style="transform:scale(.92);transform-origin:top left;width:220px">
+        <div class="label">P4</div>
+        <div class="header-row">
+          <div class="brand">栖屏<span class="sub">DeskNest</span></div>
+          <div class="page">设置</div>
+        </div>
+        <div class="divider"></div>
+        <div class="home-bar"><span></span><span></span><span></span><span class="on"></span></div>
+        <div class="content scene-p4">
+          <div class="group-head">显示</div>
+          <div class="row"><span class="l">亮度</span><span class="v">自动 <span class="arrow">›</span></span></div>
+          <div class="row"><span class="l">深色主题</span><span class="v"><span class="toggle on"></span></span></div>
+          <div class="group-head">连接</div>
+          <div class="row"><span class="l">Wi-Fi</span><span class="v">Home <span class="arrow">›</span></span></div>
+          <div class="row"><span class="l">cc-switch</span><span class="v">192.168.1.5 <span class="arrow">›</span></span></div>
+          <div class="row"><span class="l">后台同步</span><span class="v"><span class="toggle on"></span></span></div>
+          <div class="group-head">数据</div>
+          <div class="row"><span class="l">菜单候选</span><span class="v">8 道 <span class="arrow">›</span></span></div>
+          <div class="danger">长按 [A+B] 恢复出厂</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

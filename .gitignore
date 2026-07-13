@@ -13,10 +13,12 @@ __pycache__/
 # (README.md is the public project readme and stays tracked.)
 new.md
 # Keep ordinary new docs local. HALF-Work control artifacts are local-only in
-# the personal pilot; stable/public templates will be versioned later.
+# the personal pilot; the UI mockup remains a versioned acceptance artifact.
 docs/
 !/docs/
 docs/*
+!docs/ui-mockup/
+!docs/ui-mockup/index.html
 docs/control/
 
 # HALF-Work control/task artifacts and local runtime files

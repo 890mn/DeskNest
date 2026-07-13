@@ -957,7 +957,7 @@ static void update_overview(const UiModel& m) {
     }
 
     const char* daily_advice = dn_home_daily_advice(m);
-    snprintf(buf, sizeof(buf), "今日建议：%s", daily_advice);
+    snprintf(buf, sizeof(buf), "%s", daily_advice);
     set_text(po.labels[16], buf);
 }
 
