@@ -29,7 +29,9 @@ retired Canvas placeholder and is not a production fallback.
 The repository currently contains the LVGL screen/chrome and page renderer,
 the `UiModel` construction boundary, firmware app-loop wiring, AI-usage and
 desktop-status product flows, gesture/sleep behavior, and a local TokenNest
-integration boundary. The tracked source is the authority for the exact
+integration boundary. The fixed 240x320 portrait homepage uses an upper AI
+usage primary card and a lower environment-support card, both sourced from
+existing `UiModel` fields. The tracked source is the authority for the exact
 feature behavior.
 
 ## Git and worktree notes
@@ -51,6 +53,8 @@ feature behavior.
   can drift from the flashed board.
 - K10 layout changes are constrained by the physical display and embedded
   resources, so compile success alone does not prove visual acceptance.
+- The homepage 3:2 layout has passed static geometry checks and firmware build
+  evidence, but still needs physical K10 visual review.
 - Runtime orientation switching is intentionally outside the MVP path.
 
 ## Next-step triggers

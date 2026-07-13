@@ -71,3 +71,47 @@ an L0/L1/L2 task or where it sat in Observe → Plan → Implement → Verify �
 **HALF-Work feedback.** This preserves the existing short, implementation-first
 commit style while making later review and machine-assisted history queries
 possible. The convention applies to future tasks and does not rewrite history.
+
+## 2026-07-13 — HALF-Work Phase 2 Test B: homepage 3:2 dual-zone layout
+
+**Scope.** Execute the first Level 1 standard task after the L0 gesture case:
+recompose the fixed 240x320 portrait homepage into an upper AI-usage primary
+card and a lower environment-support card.
+
+**Confirmed contract.** Scope A used existing `UiModel` fields only; Layout A
+used a vertical 3:2 split; Content A made AI usage primary and environment
+status secondary; Evidence B required the browser mockup plus a `DeskNest`
+firmware build. Gesture, sensor state-machine, navigation, orientation, and
+TokenNest protocol changes were explicit non-goals.
+
+**Observed baseline.** The production page already had 151px and 97px cards,
+but the larger card rendered `homeFocus` while AI usage was secondary and
+environment values were absent from the homepage. The existing model already
+provided total AI usage, provider percentages, environment readings, grade, and
+advice, so no model extension was necessary.
+
+**Change.** Replaced the homepage renderer composition with an AI card showing
+total usage, a progress bar, and Codex/ChatGPT/MiniMax rows. The support card
+shows environment grade, temperature, humidity, lux, and advice. Updated the
+local `docs/ui-mockup/index.html` P1 examples to the same hierarchy.
+
+**Evidence.** The 240x320 content budget is explicit: `151 + 5 + 97 = 253px`
+inside the 258px content area. `C:/Users/DF/.platformio/penv/Scripts/pio.exe
+test -e desknest_test` passed all 67 test cases, and
+`C:/Users/DF/.platformio/penv/Scripts/pio.exe run -e DeskNest` completed
+successfully. `git diff --check` passed. No board flash or physical K10 visual
+acceptance is claimed. The in-app browser could not open the repository's
+`file://` mockup under its URL policy, so the preview evidence is static
+structure/geometry only rather than a screenshot.
+
+**HALF-Work feedback.** The first L1 task stayed within one renderer because
+the render-data boundary was already sufficient; the initial two-step contract
+prevented scope drift into state-machine or data-source work. For future UI
+tasks, exact geometry and mockup/renderer hierarchy parity should be explicit
+acceptance items, while compile success remains separate from board-level
+visual acceptance.
+
+**Result.** Test B has a completed Evidence B checkpoint with a remaining,
+explicit board-visual risk. The next task may be a board-oriented visual review
+or the next planned L2 architecture test; the L1 process itself is ready for
+template review.

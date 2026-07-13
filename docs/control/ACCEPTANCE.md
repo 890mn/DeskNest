@@ -70,6 +70,16 @@ may add a short `HALF-Work-Evidence` trailer.
 - `pc-simulator` results are supplemental. Board or firmware-path evidence has
   priority for product behavior.
 
+## Fixed-screen layout tasks
+
+- A fixed 240x320 layout names the usable content geometry and accounts for
+  card heights, gaps, padding, header, and footer before implementation.
+- The production renderer and its mockup keep the same information hierarchy;
+  a mockup may use different rendering technology but must not silently promote
+  a secondary module into the primary region.
+- Static geometry checks and a successful firmware build are necessary
+  evidence, but they do not claim board-level visual acceptance.
+
 ## Secrets and local configuration
 
 No acceptance artifact may contain WiFi credentials, TokenNest endpoint

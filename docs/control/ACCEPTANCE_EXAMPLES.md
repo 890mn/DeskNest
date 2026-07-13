@@ -36,6 +36,17 @@ firmware build or board evidence where the task affects device behavior.
 **Reject:** A simulator-only pass is reported as proof that K10 input, layout,
 or display behavior is complete.
 
+## Fixed 240x320 split layout
+
+**Accept:** A two-zone page records its usable pixel budget, keeps the
+production renderer and mockup in the same primary/secondary order, and
+separates static geometry/build evidence from the remaining board-level visual
+risk.
+
+**Reject:** A layout is accepted because the browser mockup looks balanced,
+while the firmware uses a different hierarchy or the card/gap/padding total
+exceeds the real content area.
+
 ## Stateful gestures are edge-triggered
 
 **Accept:** A left/right gesture emits one navigation event while the device is

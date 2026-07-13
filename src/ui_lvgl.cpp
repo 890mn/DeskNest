@@ -796,34 +796,90 @@ static void build_overview() {
     if (po.built) return;
     lv_obj_t* root = make_page_root(PAGE_PORTRAIT_OVERVIEW);
 
-    // 3:2 home composition: a single dominant focus card and a compact support card.
-    lv_obj_t* focus = lv_obj_create(root);
-    lv_obj_set_size(focus, 220, 151);
-    lv_obj_add_style(focus, &sty_card, 0);
-    lv_obj_set_style_pad_all(focus, 10, 0);
-    lv_obj_set_flex_flow(focus, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(focus, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-    lv_obj_set_style_pad_gap(focus, 5, 0);
-    lv_obj_t* focus_head = make_row(focus, 18, 6);
-    po.labels[1] = make_label(focus_head, &sty_brand16, "TODAY");
-    po.labels[2] = make_label(focus_head, &sty_dim16, "ONE THING");
-    po.labels[3] = make_label(focus, &sty_text24, "Ready");
-    lv_obj_set_width(po.labels[3], 198);
-    po.labels[4] = make_label(focus, &sty_text16, "");
-    lv_obj_set_width(po.labels[4], 198);
-    po.labels[5] = make_label(focus, &sty_dim16, "A to open");
-    lv_obj_set_width(po.labels[5], 198);
+    // 3:2 home composition: AI usage is primary, environment is secondary.
+    // Keep both cards inside the 258px content area: 151 + 5 + 97 = 253px.
+    lv_obj_t* ai = lv_obj_create(root);
+    lv_obj_set_size(ai, 220, 151);
+    lv_obj_add_style(ai, &sty_card, 0);
+    lv_obj_set_style_pad_all(ai, 8, 0);
+    lv_obj_set_flex_flow(ai, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(ai, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_gap(ai, 3, 0);
 
-    lv_obj_t* card = lv_obj_create(root);
-    lv_obj_set_size(card, 220, 97);
-    lv_obj_add_style(card, &sty_card, 0);
-    lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(card, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-    lv_obj_set_style_pad_gap(card, 5, 0);
-    make_label(card, &sty_label16, "AI USAGE");
-    make_track(card, 200, 8, &po.bars[0]);
-    po.labels[6] = make_label(card, &sty_text16);
-    po.labels[7] = make_label(card, &sty_dim16);
+    lv_obj_t* ai_head = lv_obj_create(ai);
+    plain(ai_head);
+    lv_obj_set_size(ai_head, 204, 18);
+    lv_obj_set_flex_flow(ai_head, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(ai_head, LV_FLEX_ALIGN_SPACE_BETWEEN,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    po.labels[1] = make_label(ai_head, &sty_brand16, "AI USAGE");
+    po.labels[2] = make_label(ai_head, &sty_dim16, "cached");
+    lv_obj_set_width(po.labels[2], 112);
+    lv_obj_set_style_text_align(po.labels[2], LV_TEXT_ALIGN_RIGHT, 0);
+
+    lv_obj_t* ai_total = lv_obj_create(ai);
+    plain(ai_total);
+    lv_obj_set_size(ai_total, 204, 30);
+    lv_obj_set_flex_flow(ai_total, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(ai_total, LV_FLEX_ALIGN_START,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_gap(ai_total, 5, 0);
+    po.labels[3] = make_label(ai_total, &sty_brand24, "0%");
+    lv_obj_set_width(po.labels[3], 62);
+    po.labels[4] = make_label(ai_total, &sty_dim16, "used");
+    lv_obj_set_width(po.labels[4], 50);
+    make_track(ai, 204, 8, &po.bars[0]);
+
+    const char* provider_names[3] = {"Codex", "ChatGPT", "MiniMax"};
+    for (int i = 0; i < 3; ++i) {
+        lv_obj_t* row = lv_obj_create(ai);
+        plain(row);
+        lv_obj_set_size(row, 204, 18);
+        lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+        lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START,
+                              LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+        lv_obj_set_style_pad_gap(row, 4, 0);
+        po.labels[5 + i] = make_label(row, &sty_label16, provider_names[i]);
+        lv_obj_set_width(po.labels[5 + i], 70);
+        make_track(row, 88, 6, &po.bars[1 + i]);
+        po.labels[8 + i] = make_label(row, &sty_ascii14, "0%");
+        lv_obj_set_width(po.labels[8 + i], 34);
+        lv_obj_set_style_text_align(po.labels[8 + i], LV_TEXT_ALIGN_RIGHT, 0);
+    }
+
+    lv_obj_t* environment = lv_obj_create(root);
+    lv_obj_set_size(environment, 220, 97);
+    lv_obj_add_style(environment, &sty_card, 0);
+    lv_obj_set_style_pad_all(environment, 8, 0);
+    lv_obj_set_flex_flow(environment, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(environment, LV_FLEX_ALIGN_START,
+                          LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_gap(environment, 3, 0);
+
+    lv_obj_t* environment_head = lv_obj_create(environment);
+    plain(environment_head);
+    lv_obj_set_size(environment_head, 204, 18);
+    lv_obj_set_flex_flow(environment_head, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(environment_head, LV_FLEX_ALIGN_SPACE_BETWEEN,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    po.labels[11] = make_label(environment_head, &sty_brand16, "ENVIRONMENT");
+    po.labels[12] = make_label(environment_head, &sty_dim16, "--");
+    lv_obj_set_width(po.labels[12], 100);
+    lv_obj_set_style_text_align(po.labels[12], LV_TEXT_ALIGN_RIGHT, 0);
+
+    lv_obj_t* metrics = lv_obj_create(environment);
+    plain(metrics);
+    lv_obj_set_size(metrics, 204, 26);
+    lv_obj_set_flex_flow(metrics, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(metrics, LV_FLEX_ALIGN_START,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_gap(metrics, 4, 0);
+    for (int i = 0; i < 3; ++i) {
+        po.labels[13 + i] = make_label(metrics, &sty_text16, "--");
+        lv_obj_set_width(po.labels[13 + i], 65);
+    }
+    po.labels[16] = make_label(environment, &sty_dim16, "sensor unavailable");
+    lv_obj_set_width(po.labels[16], 204);
 
     po.built = true;
 }
@@ -832,17 +888,53 @@ static void update_overview(const UiModel& m) {
     PageObjects& po = page_objects(PAGE_PORTRAIT_OVERVIEW);
     char buf[48];
 
-    set_text(po.labels[1], "TODAY");
-    set_text(po.labels[2], "ONE THING");
-    set_text(po.labels[3], m.homeFocus.title[0] ? m.homeFocus.title : "Ready");
-    set_text(po.labels[4], m.homeFocus.detail[0] ? m.homeFocus.detail : "Nothing needs your attention");
+    set_text(po.labels[1], "AI USAGE");
+    const char* ai_state = m.aiUsage.warningText && m.aiUsage.warningText[0]
+        ? m.aiUsage.warningText
+        : (m.aiUsage.updatedAtText && m.aiUsage.updatedAtText[0]
+            ? m.aiUsage.updatedAtText : "cached");
+    set_text(po.labels[2], ai_state);
 
-    set_bar(po.bars[0], m.overview.aiTotalPercent, 200);
+    snprintf(buf, sizeof(buf), "%u%%", (unsigned)m.aiUsage.totalPercent);
+    set_text(po.labels[3], buf);
+    set_text(po.labels[4], "used");
+    set_bar(po.bars[0], m.aiUsage.totalPercent, 204);
 
-    snprintf(buf, sizeof(buf), "%u%%", (unsigned)m.overview.aiTotalPercent);
-    set_text(po.labels[6], buf);
-    snprintf(buf, sizeof(buf), "%s", m.aiUsage.updatedAtText[0] ? m.aiUsage.updatedAtText : "cached");
-    set_text(po.labels[7], buf);
+    const UiUsageItemProps* providers[3] = {
+        &m.aiUsage.codex,
+        &m.aiUsage.chatgpt,
+        &m.aiUsage.minimax,
+    };
+    const char* fallback_names[3] = {"Codex", "ChatGPT", "MiniMax"};
+    for (int i = 0; i < 3; ++i) {
+        const UiUsageItemProps& item = *providers[i];
+        set_text(po.labels[5 + i], item.name && item.name[0] ? item.name : fallback_names[i]);
+        snprintf(buf, sizeof(buf), "%u%%", (unsigned)item.percent);
+        set_text(po.labels[8 + i], buf);
+        set_bar(po.bars[1 + i], item.percent, 88);
+    }
+
+    set_text(po.labels[11], "ENVIRONMENT");
+    const char* grade = (m.environment.valid && m.environment.gradeText && m.environment.gradeText[0])
+        ? m.environment.gradeText : "sensor --";
+    set_text(po.labels[12], grade);
+
+    if (m.environment.valid) {
+        snprintf(buf, sizeof(buf), "%.1f°C", (double)m.environment.temperatureC);
+        set_text(po.labels[13], buf);
+        snprintf(buf, sizeof(buf), "%.0f%%", (double)m.environment.humidityPct);
+        set_text(po.labels[14], buf);
+        snprintf(buf, sizeof(buf), "%ulx", (unsigned)m.environment.lux);
+        set_text(po.labels[15], buf);
+        set_text(po.labels[16],
+                 m.environment.adviceText && m.environment.adviceText[0]
+                     ? m.environment.adviceText : "environment stable");
+    } else {
+        set_text(po.labels[13], "--");
+        set_text(po.labels[14], "--");
+        set_text(po.labels[15], "--");
+        set_text(po.labels[16], "sensor unavailable");
+    }
 }
 
 static void build_ai_usage() {
