@@ -46,3 +46,22 @@ pio device monitor                # 串口监视
 
 - 直接烧录 `mindplus_assets/prebuilt/desknest_v0.1.0.bin`
 - 或用 `mindplus_assets/UhlCore/` 积木项目
+
+## CNFontNest font pre-build
+
+DeskNest runs the sibling `CNFontNest` repository as a PlatformIO `pre:`
+script for the `DeskNest` firmware environment. The tracked configuration is
+`tools/cnfontnest.json`; generated manifests stay in the ignored
+`.cnfontnest/` directory, while the owned LVGL C font outputs remain under
+`src/fonts/`.
+
+The default sibling path is `..\CNFontNest`. To use another checkout, set
+`CNFONTNEST_ROOT` before building. The adapter verifies the configured
+`lv_font_conv` version and fails the firmware build when the tool or generated
+artifact is unavailable. The host `desknest_test` environment does not run
+this font pre-build step.
+
+```powershell
+$env:CNFONTNEST_ROOT = "C:\path\to\CNFontNest"
+C:\Users\DF\.platformio\penv\Scripts\pio.exe run -e DeskNest
+```

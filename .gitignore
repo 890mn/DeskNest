@@ -45,3 +45,6 @@ TokenNest/.env
 platformio.local.ini
 # pre-script 从 platformio.local.ini [secrets] 生成此目录
 include/generated/
+
+# CNFontNest local generated manifests and cache
+.cnfontnest/

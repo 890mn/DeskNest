@@ -27,8 +27,11 @@
   generated local files. Never place them in Git-tracked source or documents.
 - `pc-simulator` is a helper, not the first acceptance target. Prefer the
   firmware path and K10 board behavior when they disagree.
-- Preserve the user-owned untracked file `scripts/add_chinese_glyphs.py`.
-  Do not edit, stage, delete, or replace it unless the user explicitly asks.
+<!-- HALF-WORK:MANAGED:FONT-HELPER:START -->
+- The former one-shot helper `scripts/add_chinese_glyphs.py` was removed on
+  2026-07-13 at the user's request. Use the independent CNFontNest tool for
+  glyph discovery and generation; do not recreate the legacy helper.
+<!-- HALF-WORK:MANAGED:FONT-HELPER:END -->
 
 This file records stable project constraints only. Put current task scope and
 progress in `.tasks/ACTIVE_TASK.md`, not here.
