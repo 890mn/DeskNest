@@ -141,3 +141,28 @@ claimed.
 **HALF-Work feedback.** For L0 UI fixes, verify the product-facing label
 against the underlying data-source semantics before adding a new visual row.
 An existing model field is not automatically a separate user-facing service.
+
+## 2026-07-13 — HALF-Work P1 follow-up: fill homepage primary card
+
+**Scope.** Align the current P1 mockup with the production homepage and remove
+the meaningless lower blank area left after the Codex/ChatGPT merge. P2–P4
+repair was explicitly deferred until a later HALF-Work task.
+
+**Change.** Kept the 220x151 AI primary card and redistributed its internal
+height across the header, total usage, progress bar, Codex row, MiniMax row, and
+a data-backed next-refresh row. The exact inner budget is
+`18 + 32 + 8 + 22 + 22 + 18 + 5x3 + 16 = 151px`. Updated only the three P1
+mockup instances and added a visible note that P2–P4 are historical previews.
+
+**Evidence.** Static checks confirmed the production geometry and matching P1
+preview structure. `desknest_test` passed all 67 test cases and the `DeskNest`
+firmware build completed successfully. The local `file://` preview remained
+blocked from automated refresh/screenshot by the browser URL policy, so no
+automated visual screenshot is claimed. No board flash or physical visual
+acceptance is claimed.
+
+**HALF-Work feedback.** Once a task narrows to one production page, its
+preview should declare which pages are current acceptance targets and which
+are historical. Filling a fixed card with meaningful model data is preferable
+to preserving a decorative empty region; unrelated pages should remain out of
+scope until their own task contract exists.

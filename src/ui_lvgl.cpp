@@ -819,7 +819,7 @@ static void build_overview() {
 
     lv_obj_t* ai_total = lv_obj_create(ai);
     plain(ai_total);
-    lv_obj_set_size(ai_total, 204, 30);
+    lv_obj_set_size(ai_total, 204, 32);
     lv_obj_set_flex_flow(ai_total, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(ai_total, LV_FLEX_ALIGN_START,
                           LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
@@ -834,7 +834,7 @@ static void build_overview() {
     for (int i = 0; i < 2; ++i) {
         lv_obj_t* row = lv_obj_create(ai);
         plain(row);
-        lv_obj_set_size(row, 204, 18);
+        lv_obj_set_size(row, 204, 22);
         lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
         lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START,
                               LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
@@ -846,6 +846,17 @@ static void build_overview() {
         lv_obj_set_width(po.labels[8 + i], 34);
         lv_obj_set_style_text_align(po.labels[8 + i], LV_TEXT_ALIGN_RIGHT, 0);
     }
+
+    lv_obj_t* ai_sync = lv_obj_create(ai);
+    plain(ai_sync);
+    lv_obj_set_size(ai_sync, 204, 18);
+    lv_obj_set_flex_flow(ai_sync, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(ai_sync, LV_FLEX_ALIGN_SPACE_BETWEEN,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    po.labels[17] = make_label(ai_sync, &sty_dim16, "NEXT REFRESH");
+    po.labels[18] = make_label(ai_sync, &sty_dim16, "--");
+    lv_obj_set_width(po.labels[18], 88);
+    lv_obj_set_style_text_align(po.labels[18], LV_TEXT_ALIGN_RIGHT, 0);
 
     lv_obj_t* environment = lv_obj_create(root);
     lv_obj_set_size(environment, 220, 97);
@@ -913,6 +924,14 @@ static void update_overview(const UiModel& m) {
         snprintf(buf, sizeof(buf), "%u%%", (unsigned)item.percent);
         set_text(po.labels[8 + i], buf);
         set_bar(po.bars[1 + i], item.percent, 88);
+    }
+
+    set_text(po.labels[17], "NEXT REFRESH");
+    if (m.aiUsage.nextRefreshInSec > 0) {
+        snprintf(buf, sizeof(buf), "in %us", (unsigned)m.aiUsage.nextRefreshInSec);
+        set_text(po.labels[18], buf);
+    } else {
+        set_text(po.labels[18], "on demand");
     }
 
     set_text(po.labels[11], "ENVIRONMENT");
