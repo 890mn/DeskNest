@@ -35,6 +35,9 @@ feature behavior.
 ## Git and worktree notes
 
 - Stable control files under `docs/control/*.md` are versioned.
+- Task checkpoints use a short subject such as
+  `[L0][Verify] fix(gesture): rearm after held tilt` and Git trailers for
+  `HALF-Work-Level`, `HALF-Work-Stage`, and `HALF-Work-Task`.
 - `.tasks/`, `.codex/`, `*.local.md`, control private notes, and `WORKLOG.md`
   are local-only.
 - `scripts/add_chinese_glyphs.py` is user-owned and currently untracked; leave

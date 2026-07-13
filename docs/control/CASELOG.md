@@ -53,3 +53,21 @@ not a reason to escalate every small fix into an architecture task.
 **Result.** The L0 fix is behaviorally reasonable and backed by host regression
 tests plus a firmware build. The remaining product risk is board-level feel
 and sensor behavior under real sustained tilt.
+
+## 2026-07-13 — HALF-Work Git checkpoint metadata convention
+
+**Scope.** Extend the proven control process so Git history records task level
+and workflow stage without turning commit subjects into narrative reports.
+
+**Decision.** Use a concise subject prefix such as
+`[L0][Verify] fix(gesture): rearm after held tilt`, plus standard trailers for
+`HALF-Work-Level`, `HALF-Work-Stage`, and `HALF-Work-Task`. A final checkpoint may
+include short evidence; empty phase-only commits are not required.
+
+**Reason.** The previous L0 case already used meaningful docs and implementation
+checkpoints, but the commit subject alone did not expose whether a change was
+an L0/L1/L2 task or where it sat in Observe → Plan → Implement → Verify → Review.
+
+**HALF-Work feedback.** This preserves the existing short, implementation-first
+commit style while making later review and machine-assisted history queries
+possible. The convention applies to future tasks and does not rewrite history.

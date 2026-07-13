@@ -38,6 +38,28 @@ edge/re-arm check in addition to the nominal trigger case:
 This may remain a small targeted test for a Level 0 task; it does not require a
 full architecture plan when the boundary is unchanged.
 
+## Git checkpoint metadata
+
+Meaningful task commits should keep the subject concise while exposing the
+HALF-Work level and workflow stage:
+
+```text
+[L0][Verify] fix(gesture): rearm after held tilt
+```
+
+Task commits also carry these Git trailers:
+
+```text
+HALF-Work-Level: L0
+HALF-Work-Stage: Verify
+HALF-Work-Task: held-tilt-rearm
+```
+
+`Observe`, `Plan`, `Implement`, `Verify`, and `Review` are the canonical stage
+values. Do not create empty commits only to mark a stage; each checkpoint must
+contain a meaningful reviewable change. A final verification or review commit
+may add a short `HALF-Work-Evidence` trailer.
+
 ## UI and architecture boundaries
 
 - UI tasks keep `src/ui_lvgl.cpp` as the only production renderer and consume
