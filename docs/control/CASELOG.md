@@ -115,3 +115,29 @@ visual acceptance.
 explicit board-visual risk. The next task may be a board-oriented visual review
 or the next planned L2 architecture test; the L1 process itself is ready for
 template review.
+
+## 2026-07-13 — HALF-Work Phase 2 Test B follow-up: merge Codex homepage row
+
+**Scope.** Apply an L0 presentation fix to the homepage AI card after review
+found that Codex and ChatGPT were shown as two separate services.
+
+**Diagnosis.** TokenNest documents that its ChatGPT usage source reuses the
+Codex CLI OAuth flow. The homepage renderer was therefore exposing one logical
+Codex entry twice: once from the ChatGPT usage field and once from the separate
+Codex/reset-oriented model field.
+
+**Change.** The homepage now uses the existing ChatGPT usage value under a
+fixed `Codex` label and keeps `MiniMax` as the only second provider row. The
+P1 mockup examples follow the same two-row presentation. The detailed AI page,
+model schema, and TokenNest protocol were left unchanged because this request
+was limited to the homepage presentation.
+
+**Evidence.** Static checks found six P1 provider rows across three preview
+instances: three `Codex` rows, three `MiniMax` rows, and zero `ChatGPT` rows.
+`desknest_test` passed all 67 test cases and the `DeskNest` firmware build
+completed successfully. No board flash or physical visual acceptance is
+claimed.
+
+**HALF-Work feedback.** For L0 UI fixes, verify the product-facing label
+against the underlying data-source semantics before adding a new visual row.
+An existing model field is not automatically a separate user-facing service.

@@ -830,8 +830,8 @@ static void build_overview() {
     lv_obj_set_width(po.labels[4], 50);
     make_track(ai, 204, 8, &po.bars[0]);
 
-    const char* provider_names[3] = {"Codex", "ChatGPT", "MiniMax"};
-    for (int i = 0; i < 3; ++i) {
+    const char* provider_names[2] = {"Codex", "MiniMax"};
+    for (int i = 0; i < 2; ++i) {
         lv_obj_t* row = lv_obj_create(ai);
         plain(row);
         lv_obj_set_size(row, 204, 18);
@@ -900,15 +900,16 @@ static void update_overview(const UiModel& m) {
     set_text(po.labels[4], "used");
     set_bar(po.bars[0], m.aiUsage.totalPercent, 204);
 
-    const UiUsageItemProps* providers[3] = {
-        &m.aiUsage.codex,
+    // TokenNest's ChatGPT quota is sourced through the Codex CLI OAuth flow.
+    // Keep the source field, but expose one Codex row instead of duplicating it.
+    const UiUsageItemProps* providers[2] = {
         &m.aiUsage.chatgpt,
         &m.aiUsage.minimax,
     };
-    const char* fallback_names[3] = {"Codex", "ChatGPT", "MiniMax"};
-    for (int i = 0; i < 3; ++i) {
+    const char* provider_names[2] = {"Codex", "MiniMax"};
+    for (int i = 0; i < 2; ++i) {
         const UiUsageItemProps& item = *providers[i];
-        set_text(po.labels[5 + i], item.name && item.name[0] ? item.name : fallback_names[i]);
+        set_text(po.labels[5 + i], provider_names[i]);
         snprintf(buf, sizeof(buf), "%u%%", (unsigned)item.percent);
         set_text(po.labels[8 + i], buf);
         set_bar(po.bars[1 + i], item.percent, 88);
