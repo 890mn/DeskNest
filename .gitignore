@@ -12,20 +12,15 @@ __pycache__/
 # Development markdown — keep out of VCS
 # (README.md is the public project readme and stays tracked.)
 new.md
-# Keep ordinary new docs local, but version the stable root control plane.
-# Preserve the existing ignore behavior for nested docs directories.
+# Keep ordinary new docs local. HALF-Work control artifacts are local-only in
+# the personal pilot; stable/public templates will be versioned later.
 docs/
 !/docs/
 docs/*
-!/docs/control/
-docs/control/*
-!docs/control/*.md
-docs/control/*-private.md
-docs/control/WORKLOG.md
+docs/control/
 
-# HALF-Work transient task and local runtime files
-.tasks/*
-!.tasks/ACTIVE_TASK_EXAMPLE.md
+# HALF-Work control/task artifacts and local runtime files
+.tasks/
 .codex/
 *.local.md
 
