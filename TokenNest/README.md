@@ -30,7 +30,7 @@ npm start
 
 启动后访问：
 
-- `http://127.0.0.1:8787/status.json` — K10 兼容的 cc-switch 格式
+- `http://127.0.0.1:8787/status.json` — K10 兼容格式，含窗口百分比和明确的可用性字段
 - `http://127.0.0.1:8787/api/usage` — 完整 5h/weekly 扩展视图
 - `http://127.0.0.1:8787/healthz` — 上游健康度
 
@@ -83,8 +83,8 @@ powershell -ExecutionPolicy Bypass -File scripts\install-service.ps1
 {
   "updatedAtText": "12 min",
   "warningText": "",
-  "chatgpt":  { "percent": 42, "status": "plus", "detail": "5h:42% · wk:11%" },
-  "minimax":  { "percent": 30, "status": "MiniMax-M2", "detail": "700/1000 · wk:18%" }
+  "chatgpt":  { "percent": 42, "weeklyPercent": 11, "fiveHourAvailable": true, "weeklyAvailable": true },
+  "minimax":  { "percent": 30, "weeklyPercent": 18, "fiveHourAvailable": true, "weeklyAvailable": true }
 }
 ```
 
@@ -140,7 +140,7 @@ TokenNest/
 ## 已知限制
 
 - **MiniMax 接口真实性未亲自验证**：全网唯一参考实现是 `Eyozy/minimax-usage`，字段命名反直觉（`usage_count` 实际是"剩余"）。第一次跑一定要 `npm run probe:minimax` 抓真响应，对照字段名。
-- **K10 端 5h/weekly 显示未实装**：本服务只输出扩展 `/api/usage`，UI 层显示需要后续 K10 端 PR（不在本计划范围）。
+- **K10 端 5h/weekly 显示已接入**：`/status.json` 的窗口可用性和有效百分比已经进入 DeskNest parser/UI；未重新烧录时，实机显示仍需单独验收。
 - **K10 端 HTTP 客户端未实现**：本服务先按 HTTP 设计，等 P1-B 把 `nvs_key::CC_SWITCH_URL` 消费起来后即插即用。
 
 ---

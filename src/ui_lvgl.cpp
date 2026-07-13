@@ -925,9 +925,9 @@ static void update_overview(const UiModel& m) {
     for (int i = 0; i < 2; ++i) {
         const UiUsageItemProps& item = *providers[i];
         set_text(po.labels[5 + i], provider_names[i]);
-        snprintf(buf, sizeof(buf), "%u%%", (unsigned)item.percent);
+        snprintf(buf, sizeof(buf), "%u%%", (unsigned)item.effectivePercent);
         set_text(po.labels[8 + i], buf);
-        set_bar(po.bars[1 + i], item.percent, 88);
+        set_bar(po.bars[1 + i], item.effectivePercent, 88);
     }
 
     set_text(po.labels[17], "NEXT REFRESH");
@@ -1063,8 +1063,8 @@ static void update_ai_usage(const UiModel& m) {
     char codex_buf[160];
     time_t now_epoch = parse_iso_local_epoch(m.aiUsage.serverNow);
     if (now_epoch <= 0) now_epoch = dn_ai_usage_now_epoch();
-    const uint8_t chatgpt_left = (uint8_t)(m.aiUsage.chatgpt.percent >= 100 ? 0 : 100 - m.aiUsage.chatgpt.percent);
-    const uint8_t minimax_left = (uint8_t)(m.aiUsage.minimax.percent >= 100 ? 0 : 100 - m.aiUsage.minimax.percent);
+    const uint8_t chatgpt_left = (uint8_t)(m.aiUsage.chatgpt.effectivePercent >= 100 ? 0 : 100 - m.aiUsage.chatgpt.effectivePercent);
+    const uint8_t minimax_left = (uint8_t)(m.aiUsage.minimax.effectivePercent >= 100 ? 0 : 100 - m.aiUsage.minimax.effectivePercent);
 
     set_hhmm_text(po.labels[0], m.overview.timeText);
 
@@ -1080,12 +1080,19 @@ static void update_ai_usage(const UiModel& m) {
         const char* name;
         uint8_t percent;
         uint32_t color;
+        bool available;
+        bool weeklyAvailable;
+        bool fiveHour;
     };
     const UsageWindowRow rows[4] = {
-        {"ChatGPT 5h", m.aiUsage.chatgpt.percent, C_GPT},
-        {"ChatGPT Week", m.aiUsage.chatgpt.weeklyPercent, C_GPT},
-        {"MiniMax 5h", m.aiUsage.minimax.percent, C_MINIMAX},
-        {"MiniMax Week", m.aiUsage.minimax.weeklyPercent, C_MINIMAX},
+        {"ChatGPT 5h", m.aiUsage.chatgpt.percent, C_GPT,
+            m.aiUsage.chatgpt.fiveHourAvailable, m.aiUsage.chatgpt.weeklyAvailable, true},
+        {"ChatGPT Week", m.aiUsage.chatgpt.weeklyPercent, C_GPT,
+            m.aiUsage.chatgpt.weeklyAvailable, m.aiUsage.chatgpt.weeklyAvailable, false},
+        {"MiniMax 5h", m.aiUsage.minimax.percent, C_MINIMAX,
+            m.aiUsage.minimax.fiveHourAvailable, m.aiUsage.minimax.weeklyAvailable, true},
+        {"MiniMax Week", m.aiUsage.minimax.weeklyPercent, C_MINIMAX,
+            m.aiUsage.minimax.weeklyAvailable, m.aiUsage.minimax.weeklyAvailable, false},
     };
     const char* expire_ats[4] = {
         m.aiUsage.chatgpt.fiveHourExpireAt,
@@ -1095,11 +1102,17 @@ static void update_ai_usage(const UiModel& m) {
     };
     for (int i = 0; i < 4; ++i) {
         set_text(po.labels[6 + i * 2], rows[i].name);
-        if ((i % 2) == 0) format_remaining_hm(buf, sizeof(buf), now_epoch, expire_ats[i]);
-        else format_week_expire(buf, sizeof(buf), now_epoch, expire_ats[i]);
+        if (!rows[i].available) {
+            snprintf(buf, sizeof(buf), "%s",
+                     rows[i].fiveHour && rows[i].weeklyAvailable ? "NO LIMIT" : "NO DATA");
+        } else if ((i % 2) == 0) {
+            format_remaining_hm(buf, sizeof(buf), now_epoch, expire_ats[i]);
+        } else {
+            format_week_expire(buf, sizeof(buf), now_epoch, expire_ats[i]);
+        }
         set_text(po.labels[7 + i * 2], buf);
         lv_obj_set_style_text_color(po.labels[7 + i * 2], lv_color_hex(rows[i].color), 0);
-        set_bar(po.bars[8 + i], rows[i].percent, 220);
+        set_bar(po.bars[8 + i], rows[i].available ? rows[i].percent : 0, 220);
         lv_obj_set_style_bg_color(po.bars[8 + i], lv_color_hex(rows[i].color), 0);
     }
 

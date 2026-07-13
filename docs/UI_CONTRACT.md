@@ -295,8 +295,14 @@ struct PortraitOverviewProps {
 struct UsageItemProps {
     const char* name;
     uint8_t percent;
+    uint8_t weeklyPercent;
+    bool fiveHourAvailable;
+    bool weeklyAvailable;
+    uint8_t effectivePercent;
     const char* statusText;
     const char* detailText;
+    const char* fiveHourExpireAt;
+    const char* weekExpireAt;
 };
 
 struct AiUsageProps {
@@ -309,6 +315,12 @@ struct AiUsageProps {
     const char* warningText;
 };
 ```
+
+`effectivePercent` 是展示层使用的统一百分比：5h 窗口存在时取 `percent`，否则
+在 weekly 窗口存在时取 `weeklyPercent`。`fiveHourAvailable` 和
+`weeklyAvailable` 是窗口存在性的显式信号；`percent == 0` 或缺少重置时间不能
+单独推断为“无限额度”。AI 详情页可据此在“没有 5h 但有 weekly”时显示
+`NO LIMIT`，在未知或失败时显示未知状态。
 
 ### EnvironmentProps
 

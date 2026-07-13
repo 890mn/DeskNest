@@ -125,6 +125,9 @@ struct UiUsageItemProps {
     const char* name = "";
     uint8_t percent = 0;
     uint8_t weeklyPercent = 0;
+    bool fiveHourAvailable = false;
+    bool weeklyAvailable = false;
+    uint8_t effectivePercent = 0;
     const char* statusText = "";
     const char* detailText = "";
     const char* fiveHourExpireAt = "";
@@ -421,6 +424,9 @@ inline UiUsageItemProps dn_usage_item(const AIUsageItemStatus& src) {
     item.name = src.name;
     item.percent = src.percent;
     item.weeklyPercent = src.weeklyPercent;
+    item.fiveHourAvailable = src.fiveHourAvailable;
+    item.weeklyAvailable = src.weeklyAvailable;
+    item.effectivePercent = src.effectivePercent;
     item.statusText = src.statusText;
     item.detailText = src.detailText;
     item.fiveHourExpireAt = src.fiveHourExpireAt;

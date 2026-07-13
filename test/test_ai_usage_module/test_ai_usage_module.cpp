@@ -79,6 +79,35 @@ void test_ai_usage_module_uses_max_service_percent_without_total() {
     TEST_ASSERT_EQUAL_STRING("now", status.updatedAtText);
 }
 
+void test_ai_usage_module_weekly_only_uses_weekly_effective_percent() {
+    const char* json =
+        "{"
+        "\"chatgpt\":{\"percent\":0,\"weeklyPercent\":39,\"fiveHourAvailable\":false,\"weeklyAvailable\":true},"
+        "\"minimax\":{\"percent\":1,\"fiveHourAvailable\":true,\"weeklyAvailable\":true}"
+        "}";
+    AIUsageParseStorage storage;
+    AIUsageStatus status;
+
+    TEST_ASSERT_TRUE(dn_ai_usage_parse_cc_switch_status(json, &storage, &status));
+    TEST_ASSERT_FALSE(status.chatgpt.fiveHourAvailable);
+    TEST_ASSERT_TRUE(status.chatgpt.weeklyAvailable);
+    TEST_ASSERT_EQUAL_UINT8(39, status.chatgpt.effectivePercent);
+    TEST_ASSERT_EQUAL_UINT8(39, status.totalPercent);
+}
+
+void test_ai_usage_module_distinguishes_real_zero_five_hour_quota() {
+    const char* json =
+        "{"
+        "\"chatgpt\":{\"percent\":0,\"weeklyPercent\":0,\"fiveHourAvailable\":true,\"weeklyAvailable\":true}"
+        "}";
+    AIUsageParseStorage storage;
+    AIUsageStatus status;
+
+    TEST_ASSERT_TRUE(dn_ai_usage_parse_cc_switch_status(json, &storage, &status));
+    TEST_ASSERT_TRUE(status.chatgpt.fiveHourAvailable);
+    TEST_ASSERT_EQUAL_UINT8(0, status.chatgpt.effectivePercent);
+}
+
 void test_ai_usage_module_parses_server_now_epoch() {
     const time_t epoch = dn_parse_iso8601_epoch("2026-07-09T06:04:34+08:00");
     TEST_ASSERT_EQUAL_INT64(1783548274LL, (long long)epoch);
@@ -99,6 +128,8 @@ int main(int argc, char **argv) {
     RUN_TEST(test_ai_usage_module_clamps_percent);
     RUN_TEST(test_ai_usage_module_parses_cc_switch_cache);
     RUN_TEST(test_ai_usage_module_uses_max_service_percent_without_total);
+    RUN_TEST(test_ai_usage_module_weekly_only_uses_weekly_effective_percent);
+    RUN_TEST(test_ai_usage_module_distinguishes_real_zero_five_hour_quota);
     RUN_TEST(test_ai_usage_module_parses_server_now_epoch);
     RUN_TEST(test_ai_usage_module_applies_server_now_plus8_correction);
     return UNITY_END();

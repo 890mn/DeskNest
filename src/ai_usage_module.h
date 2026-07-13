@@ -36,6 +36,9 @@ struct AIUsageItemStatus {
     const char* name = "";
     uint8_t percent = 0;
     uint8_t weeklyPercent = 0;
+    bool fiveHourAvailable = false;
+    bool weeklyAvailable = false;
+    uint8_t effectivePercent = 0;
     const char* statusText = "";
     const char* detailText = "";
     const char* fiveHourExpireAt = "";
@@ -103,11 +106,17 @@ inline AIUsageItemStatus dn_ai_usage_item(const char* name,
                                           const char* detailText,
                                           int weeklyPercent = 0,
                                           const char* fiveHourExpireAt = "",
-                                          const char* weekExpireAt = "") {
+                                          const char* weekExpireAt = "",
+                                          bool fiveHourAvailable = true,
+                                          bool weeklyAvailable = false) {
     AIUsageItemStatus item;
     item.name = name;
     item.percent = dn_clamp_percent(percent);
     item.weeklyPercent = dn_clamp_percent(weeklyPercent);
+    item.fiveHourAvailable = fiveHourAvailable;
+    item.weeklyAvailable = weeklyAvailable;
+    item.effectivePercent = fiveHourAvailable ? item.percent
+        : (weeklyAvailable ? item.weeklyPercent : 0);
     item.statusText = statusText;
     item.detailText = detailText;
     item.fiveHourExpireAt = fiveHourExpireAt;
@@ -118,10 +127,12 @@ inline AIUsageItemStatus dn_ai_usage_item(const char* name,
 inline AIUsageStatus dn_ai_usage_demo_status() {
     AIUsageStatus status;
     status.totalPercent = 72;
-    status.chatgpt = dn_ai_usage_item("ChatGPT", 72, "OK", "5h:72% wk:11%", 11);
+    status.chatgpt = dn_ai_usage_item("ChatGPT", 72, "OK", "5h:72% wk:11%", 11,
+                                      "", "", true, true);
     status.codex = dn_ai_usage_item("Codex", 58, "正常", "");
     status.minimax = dn_ai_usage_item("MiniMax", 86, "充足", "");
     status.minimax.weeklyPercent = 18;
+    status.minimax.weeklyAvailable = true;
     status.updatedAtText = "cached";
     status.warningText = "";
     status.nextRefreshInSec = 30;
@@ -196,6 +207,25 @@ inline bool dn_json_int_value(const char* json, const char* key, int* out) {
     return true;
 }
 
+inline bool dn_json_bool_value(const char* json, const char* key, bool* out) {
+    if (!out) return false;
+    const char* p = dn_json_find_key(json, key);
+    if (!p) return false;
+    p = strchr(p, ':');
+    if (!p) return false;
+    ++p;
+    while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') ++p;
+    if (strncmp(p, "true", 4) == 0) {
+        *out = true;
+        return true;
+    }
+    if (strncmp(p, "false", 5) == 0) {
+        *out = false;
+        return true;
+    }
+    return false;
+}
+
 inline bool dn_parse_percent_after_marker(const char* text, const char* marker, int* out) {
     if (!text || !marker || !out) return false;
     const char* p = strstr(text, marker);
@@ -247,6 +277,10 @@ inline void dn_parse_service_usage(const char* json,
         percent = 0;
     }
     int weeklyPercent = 0;
+    bool fiveHourAvailable = false;
+    bool weeklyAvailable = false;
+    bool hasFiveHourAvailability = false;
+    bool hasWeeklyAvailability = false;
     if (obj) {
         if (!dn_json_string_value(obj, "status", statusBuf, statusCap)) {
             statusBuf[0] = '\0';
@@ -261,11 +295,23 @@ inline void dn_parse_service_usage(const char* json,
         if (!dn_json_string_value(obj, "weekExpireAt", weekExpireAtBuf, weekExpireAtCap)) {
             weekExpireAtBuf[0] = '\0';
         }
+        // Availability is an explicit server contract. Do not derive it from
+        // a zero percentage or a missing reset timestamp when the fields are
+        // present. Legacy status payloads predate these fields, so retain a
+        // conservative compatibility fallback for those payloads only.
+        hasFiveHourAvailability = dn_json_bool_value(obj, "fiveHourAvailable", &fiveHourAvailable);
+        hasWeeklyAvailability = dn_json_bool_value(obj, "weeklyAvailable", &weeklyAvailable);
         weeklyPercent = dn_weekly_percent_from_detail(detailBuf);
         if (weeklyPercent == 0 &&
             !dn_json_int_value(obj, "weeklyPercent", &weeklyPercent) &&
             !dn_json_int_value(obj, "secondaryPercent", &weeklyPercent)) {
             weeklyPercent = 0;
+        }
+        if (!hasFiveHourAvailability) {
+            fiveHourAvailable = fiveHourExpireAtBuf[0] != '\0' || percent > 0;
+        }
+        if (!hasWeeklyAvailability) {
+            weeklyAvailable = weekExpireAtBuf[0] != '\0' || weeklyPercent > 0;
         }
     } else {
         statusBuf[0] = '\0';
@@ -274,7 +320,8 @@ inline void dn_parse_service_usage(const char* json,
         weekExpireAtBuf[0] = '\0';
     }
     *out = dn_ai_usage_item(displayName, percent, statusBuf, detailBuf, weeklyPercent,
-                            fiveHourExpireAtBuf, weekExpireAtBuf);
+                            fiveHourExpireAtBuf, weekExpireAtBuf,
+                            fiveHourAvailable, weeklyAvailable);
 }
 
 inline uint8_t dn_parse_codex_resets(const char* json, AIUsageParseStorage* storage, AICodexResetStatus* out, uint8_t cap) {
@@ -337,14 +384,11 @@ inline bool dn_ai_usage_parse_cc_switch_status(const char* json,
     status.codex = dn_ai_usage_item("Codex", 0, "", "");
     status.codexResetCount = dn_parse_codex_resets(json, storage, status.codexResets, 4);
 
-    int total = -1;
-    if (dn_json_int_value(json, "totalPercent", &total)) {
-        status.totalPercent = dn_clamp_percent(total);
-    } else {
-        status.totalPercent = status.chatgpt.percent > status.minimax.percent
-            ? status.chatgpt.percent
-            : status.minimax.percent;
-    }
+    // The overview always follows each provider's effective window: 5h when
+    // present, otherwise confirmed weekly. Unknown/error windows contribute 0.
+    status.totalPercent = status.chatgpt.effectivePercent > status.minimax.effectivePercent
+        ? status.chatgpt.effectivePercent
+        : status.minimax.effectivePercent;
 
     int nextRefresh = 0;
     if (dn_json_int_value(json, "nextRefreshInSec", &nextRefresh)) {

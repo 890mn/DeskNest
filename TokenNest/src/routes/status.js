@@ -43,18 +43,20 @@ const tn_clamp = (n) => Math.max(0, Math.min(100, Math.round(n ?? 0)));
 
 // chatgpt 输出
 const tn_chatgpt_out = (snap) => {
-    if (!snap || !snap.ok || !snap.primary) {
-        return { percent: 0, weeklyPercent: 0, fiveHourExpireAt: null, weekExpireAt: null };
-    }
+    const sourceOk = Boolean(snap?.ok) && !Boolean(snap?.stale);
+    const fiveHourAvailable = sourceOk && Boolean(snap?.primary);
+    const weeklyAvailable = sourceOk && Boolean(snap?.secondary);
     // reset_at 是未来 Unix 秒时间戳（> 1B），转北京时间
-    const fiveHourAt = (snap.primary.resetsAt && snap.primary.resetsAt > 1_000_000_000)
+    const fiveHourAt = (snap?.primary?.resetsAt && snap.primary.resetsAt > 1_000_000_000)
         ? tn_unix_to_iso(snap.primary.resetsAt)
-        : (snap.primary.resetsInSeconds ? tn_secs_to_iso(snap.primary.resetsInSeconds) : null);
+        : (snap?.primary?.resetsInSeconds ? tn_secs_to_iso(snap.primary.resetsInSeconds) : null);
     return {
-        percent: tn_clamp(snap.primary.usedPercent ?? 0),
-        weeklyPercent: tn_clamp(snap.secondary?.usedPercent ?? 0),
+        percent: tn_clamp(snap?.primary?.usedPercent ?? 0),
+        weeklyPercent: tn_clamp(snap?.secondary?.usedPercent ?? 0),
+        fiveHourAvailable,
+        weeklyAvailable,
         fiveHourExpireAt: fiveHourAt,
-        weekExpireAt: snap.secondary?.resetsInSeconds
+        weekExpireAt: snap?.secondary?.resetsInSeconds
             ? tn_secs_to_iso(snap.secondary.resetsInSeconds)
             : null,
     };
@@ -62,17 +64,33 @@ const tn_chatgpt_out = (snap) => {
 
 // minimax 输出
 const tn_minimax_out = (snap) => {
-    if (!snap || !snap.ok || !snap.models?.length) {
-        return { percent: 0, weeklyPercent: 0, fiveHourExpireAt: null, weekExpireAt: null };
+    if (!snap || !snap.ok || snap.stale || !snap.models?.length) {
+        return {
+            percent: 0,
+            weeklyPercent: 0,
+            fiveHourAvailable: false,
+            weeklyAvailable: false,
+            fiveHourExpireAt: null,
+            weekExpireAt: null,
+        };
     }
     const eligible = snap.models.filter((m) => m.primary && Number.isFinite(m.primary.usedPercent));
     if (!eligible.length) {
-        return { percent: 0, weeklyPercent: 0, fiveHourExpireAt: null, weekExpireAt: null };
+        return {
+            percent: 0,
+            weeklyPercent: 0,
+            fiveHourAvailable: false,
+            weeklyAvailable: false,
+            fiveHourExpireAt: null,
+            weekExpireAt: null,
+        };
     }
     const m = eligible.reduce((a, b) => (a.primary.usedPercent >= b.primary.usedPercent ? a : b));
     return {
         percent: tn_clamp(m.primary.usedPercent ?? 0),
         weeklyPercent: tn_clamp(m.secondary?.usedPercent ?? 0),
+        fiveHourAvailable: true,
+        weeklyAvailable: Boolean(m.secondary),
         fiveHourExpireAt: m.primary.resetsInSeconds ? tn_secs_to_iso(m.primary.resetsInSeconds) : null,
         weekExpireAt: m.secondary?.resetsInSeconds ? tn_secs_to_iso(m.secondary.resetsInSeconds) : null,
     };

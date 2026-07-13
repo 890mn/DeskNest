@@ -55,12 +55,79 @@ test('status.json: new format — top-level fields present', async () => {
         // chatgpt 字段
         assert.equal(res.body.chatgpt.percent, 72);
         assert.equal(res.body.chatgpt.weeklyPercent, 43);
+        assert.equal(res.body.chatgpt.fiveHourAvailable, true);
+        assert.equal(res.body.chatgpt.weeklyAvailable, true);
         // minimax 字段
         assert.equal(res.body.minimax.percent, 86);
         assert.equal(res.body.minimax.weeklyPercent, 18);
+        assert.equal(res.body.minimax.fiveHourAvailable, true);
+        assert.equal(res.body.minimax.weeklyAvailable, true);
         // codexResets 数组
         assert.ok(Array.isArray(res.body.codexResets));
     } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('status.json: ChatGPT weekly-only keeps percent separate and declares availability', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tn-rt-'));
+    try {
+        setupCache(dir,
+            { ok: true, planType: 'plus', primary: null, secondary: { usedPercent: 0, resetsInSeconds: 604800 } },
+            { ok: true, models: [] },
+        );
+        const handler = tn_create_status_route({
+            getAggregate: () => tn_aggregate({ cacheDir: dir, staleThresholdSec: 300 }),
+            staleThresholdSec: 300,
+            sources: [],
+        });
+        const res = makeRes();
+        handler({}, res);
+        assert.equal(res.body.chatgpt.fiveHourAvailable, false);
+        assert.equal(res.body.chatgpt.weeklyAvailable, true);
+        assert.equal(res.body.chatgpt.percent, 0);
+        assert.equal(res.body.chatgpt.weeklyPercent, 0);
+        assert.equal(res.body.minimax.fiveHourAvailable, false);
+        assert.equal(res.body.minimax.weeklyAvailable, false);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('status.json: missing or failed ChatGPT window never claims availability', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tn-rt-'));
+    try {
+        setupCache(dir, { ok: false, error: 'upstream failed', primary: null, secondary: null }, { ok: true, models: [] });
+        const handler = tn_create_status_route({
+            getAggregate: () => tn_aggregate({ cacheDir: dir, staleThresholdSec: 300 }),
+            staleThresholdSec: 300,
+            sources: [],
+        });
+        const res = makeRes();
+        handler({}, res);
+        assert.equal(res.body.chatgpt.fiveHourAvailable, false);
+        assert.equal(res.body.chatgpt.weeklyAvailable, false);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('status.json: stale windows never claim NO LIMIT availability', async () => {
+    const handler = tn_create_status_route({
+        getAggregate: () => ({
+            chatgpt: {
+                ok: true,
+                stale: true,
+                primary: null,
+                secondary: { usedPercent: 39, resetsInSeconds: 604800 },
+                error: null,
+            },
+            minimax: { ok: true, stale: true, models: [], error: null },
+            resetCredits: [],
+        }),
+        staleThresholdSec: 300,
+        sources: [],
+    });
+    const res = makeRes();
+    handler({}, res);
+    assert.equal(res.body.chatgpt.fiveHourAvailable, false);
+    assert.equal(res.body.chatgpt.weeklyAvailable, false);
+    assert.equal(res.body.minimax.fiveHourAvailable, false);
+    assert.equal(res.body.minimax.weeklyAvailable, false);
 });
 
 test('status.json: chatgpt reset credits reflected in codexResets', async () => {

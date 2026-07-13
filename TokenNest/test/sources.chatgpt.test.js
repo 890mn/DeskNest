@@ -82,6 +82,28 @@ test('chatgpt: happy path parses primary/secondary + reset credits', async () =>
     }
 });
 
+test('chatgpt: one upstream window is normalized as weekly, not 5h', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tn-cg-'));
+    try {
+        const authFile = makeAuthFile(dir, { tokens: { access_token: 'A', last_refresh: new Date().toISOString() } });
+        const fetchImpl = fakeFetch((url) => {
+            if (url.includes('wham/usage')) {
+                return { ok: true, status: 200, async json() {
+                    return { rate_limit: { primary_window: { used_percent: 37, reset_after_seconds: 604800 } } };
+                } };
+            }
+            if (url.includes('rate-limit-reset-credits')) {
+                return { ok: true, status: 200, async json() { return { credits: [], available_count: 0 }; } };
+            }
+            throw new Error('unexpected url ' + url);
+        });
+        const r = await tn_chatgpt_poll_once({ authFile, fetchImpl });
+        assert.equal(r.ok, true);
+        assert.equal(r.primary, null);
+        assert.equal(r.secondary.usedPercent, 37);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('chatgpt: 401 triggers refresh and retry', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'tn-cg-'));
     try {

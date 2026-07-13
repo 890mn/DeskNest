@@ -69,3 +69,18 @@ test('aggregator: multi-model minimax → primaryPercent = max of models', async
         assert.equal(r.primaryPercent, 70);
     } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('aggregator: ChatGPT weekly-only contributes to secondary, not primary', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tn-agg-'));
+    try {
+        makeCache(dir,
+            { ok: true, primary: null, secondary: { usedPercent: 0 } },
+            { ok: true, models: [] },
+        );
+        const r = tn_aggregate({ cacheDir: dir, staleThresholdSec: 300 });
+        assert.equal(r.primaryPercent, 0);
+        assert.equal(r.secondaryPercent, 0);
+        assert.equal(r.chatgpt.primary, null);
+        assert.equal(r.chatgpt.secondary.usedPercent, 0);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+});

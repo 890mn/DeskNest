@@ -111,8 +111,14 @@ const tn_window_to_reached = (win) => {
 
 const tn_parse_wham = (json) => {
     const rl = json.rate_limit ?? json.rateLimit ?? {};
-    const primary = rl.primary_window ?? rl.primaryWindow ?? null;
-    const secondary = rl.secondary_window ?? rl.secondaryWindow ?? null;
+    const upstreamPrimary = rl.primary_window ?? rl.primaryWindow ?? null;
+    const upstreamSecondary = rl.secondary_window ?? rl.secondaryWindow ?? null;
+    // A single upstream window is confirmed to be weekly. Only preserve the
+    // primary/secondary mapping when both windows are explicitly present.
+    const primary = upstreamPrimary && upstreamSecondary ? upstreamPrimary : null;
+    const secondary = upstreamPrimary && upstreamSecondary
+        ? upstreamSecondary
+        : (upstreamPrimary ?? upstreamSecondary);
 
     return {
         accountId: json.account_id ?? json.accountId ?? null,
