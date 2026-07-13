@@ -156,6 +156,7 @@ static const char* shakePhaseName(ShakePhase phase) {
     switch (phase) {
         case SHAKE_PHASE_OUTBOUND:  return "OUTBOUND";
         case SHAKE_PHASE_RETURNING: return "RETURNING";
+        case SHAKE_PHASE_WAIT_NEUTRAL: return "WAIT_NEUTRAL";
         default:                    return "IDLE";
     }
 }

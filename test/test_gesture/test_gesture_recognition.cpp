@@ -416,6 +416,39 @@ void test_gesture_shake_cooldown_blocks_second() {
 }
 
 // ===========================================================================
+// 7b) 出站触发：持续保持倾斜只能触发一次，回中立后才重新武装
+// ===========================================================================
+void test_gesture_outbound_tilt_is_edge_triggered() {
+    g_tuning.gesture_shake_enabled = 1;
+    g_tuning.shake_fire_on_outbound = 1;
+    GestureEngine g;
+    g.begin();
+    feedSettle(g, 0.0f, 1.0f, 0.0f);
+
+    int fired = 0;
+    for (int i = 0; i < 40; ++i) {
+        const GestureEvent e = g.update(accel(+0.9f, 0.0f, 0.0f), g_mock_millis);
+        g_mock_millis += 33;
+        if (e == GESTURE_SHAKE_LEFT || e == GESTURE_SHAKE_RIGHT) ++fired;
+    }
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, fired,
+                                  "held tilt repeated navigation events");
+    TEST_ASSERT_EQUAL(SHAKE_PHASE_WAIT_NEUTRAL, g.shakePhase());
+
+    feedSettle(g, 0.0f, 1.0f, 0.0f);
+    TEST_ASSERT_EQUAL(SHAKE_PHASE_IDLE, g.shakePhase());
+
+    bool fired_again = false;
+    for (int i = 0; i < 3; ++i) {
+        const GestureEvent e = g.update(accel(+0.9f, 0.0f, 0.0f), g_mock_millis);
+        g_mock_millis += 33;
+        if (e == GESTURE_SHAKE_LEFT || e == GESTURE_SHAKE_RIGHT) fired_again = true;
+    }
+    TEST_ASSERT_TRUE_MESSAGE(fired_again, "neutral settle did not re-arm tilt");
+    g_tuning.shake_fire_on_outbound = 0;
+}
+
+// ===========================================================================
 // 8) 翻面栖息：az > 0.7 持续 800ms → FACE_DOWN（同时跨过 2000ms 冷却）
 // ===========================================================================
 void test_gesture_face_down_roost() {
@@ -785,6 +818,7 @@ int main(int /*argc*/, char** /*argv*/) {
     RUN_TEST(test_gesture_shake_not_detected_below_threshold);
     RUN_TEST(test_gesture_light_shake_detected);
     RUN_TEST(test_gesture_shake_cooldown_blocks_second);
+    RUN_TEST(test_gesture_outbound_tilt_is_edge_triggered);
     RUN_TEST(test_gesture_face_down_roost);
     RUN_TEST(test_gesture_face_down_single_trigger_while_held);
     RUN_TEST(test_gesture_face_up_open);

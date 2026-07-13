@@ -109,7 +109,10 @@ GestureEvent GestureEngine::detectShake_(float ax, uint32_t now_ms) {
 
     const float motion_ax = _shake_baseline_valid ? (ax - _shake_baseline_ax) : 0.0f;
 
-    if (_shake_phase != SHAKE_PHASE_IDLE &&
+    const bool shake_motion_phase =
+        _shake_phase == SHAKE_PHASE_OUTBOUND ||
+        _shake_phase == SHAKE_PHASE_RETURNING;
+    if (shake_motion_phase &&
         now_ms - _shake_started_ms > g_tuning.shake_window_ms) {
         Serial.printf("[D][GESTURE] shake timeout phase=%u elapsed=%lu motion=%+.3f axis_sign=%d "
                       "return=%.3f settle=%.3f peak=%.3f\n",
@@ -128,6 +131,24 @@ GestureEvent GestureEngine::detectShake_(float ax, uint32_t now_ms) {
         _shake_baseline_ax = ax;
         _shake_baseline_valid = true;
         Serial.printf("[D][GESTURE] shake baseline init ax=%+.3f\n", ax);
+        return GESTURE_NONE;
+    }
+
+    // Outbound 模式已经提交过一次事件时，持续保持倾斜不能重新产生事件。
+    // 必须回到相对基线的中立区并稳定若干帧，下一次倾斜才重新武装。
+    // 该状态不受 shake_window_ms 超时影响，否则长时间保持倾斜仍会重复触发。
+    if (_shake_phase == SHAKE_PHASE_WAIT_NEUTRAL) {
+        if (fabsf(motion_ax) <= settle_threshold) {
+            if (++_shake_settle_samples >= 3) {
+                _shake_phase = SHAKE_PHASE_IDLE;
+                _shake_settle_samples = 0;
+                _shake_axis_sign = 0;
+                _shake_direction = 0;
+                _shake_outbound_samples = 0;
+            }
+        } else {
+            _shake_settle_samples = 0;
+        }
         return GESTURE_NONE;
     }
 
@@ -156,10 +177,11 @@ GestureEvent GestureEngine::detectShake_(float ax, uint32_t now_ms) {
             Serial.printf("[D][GESTURE] shake fire_on_outbound event=%s\n",
                           event == GESTURE_SHAKE_LEFT ? "SHAKE_LEFT" : "SHAKE_RIGHT");
             _last_shake_ms = now_ms;
-            _shake_phase = SHAKE_PHASE_IDLE;
+            _shake_phase = SHAKE_PHASE_WAIT_NEUTRAL;
             _shake_axis_sign = 0;
             _shake_direction = 0;
             _shake_settle_samples = 0;
+            _shake_outbound_samples = 0;
             return event;
         }
         return GESTURE_NONE;
@@ -179,10 +201,11 @@ GestureEvent GestureEngine::detectShake_(float ax, uint32_t now_ms) {
             Serial.printf("[D][GESTURE] shake fire_on_outbound event=%s\n",
                           event == GESTURE_SHAKE_LEFT ? "SHAKE_LEFT" : "SHAKE_RIGHT");
             _last_shake_ms = now_ms;
-            _shake_phase = SHAKE_PHASE_IDLE;
+            _shake_phase = SHAKE_PHASE_WAIT_NEUTRAL;
             _shake_axis_sign = 0;
             _shake_direction = 0;
             _shake_outbound_samples = 0;
+            _shake_settle_samples = 0;
             return event;
         }
         if ((_shake_axis_sign > 0 && motion_ax <= -return_threshold) ||

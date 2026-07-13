@@ -113,7 +113,7 @@ struct GestureTuning {
     uint16_t shake_window_ms;         // 摇动峰值跟踪窗口（默认 200ms）
     uint16_t shake_cooldown_ms;       // 两次摇动最小间隔（默认 600ms）
     uint8_t  shake_invert;            // 方向反转（K10 BSP 坐标方向不一致时用）
-    uint8_t  shake_fire_on_outbound;  // test mode: emit on first outbound peak
+    uint8_t  shake_fire_on_outbound;  // 1 = outbound 触发；触发后仍需回中立才重新武装
 
     // Tap
     float    tap_z_high;              // 当前 az > 此值（默认 1.2g）
@@ -132,6 +132,7 @@ enum ShakePhase : uint8_t {
     SHAKE_PHASE_IDLE = 0,
     SHAKE_PHASE_OUTBOUND,
     SHAKE_PHASE_RETURNING,
+    SHAKE_PHASE_WAIT_NEUTRAL,
 };
 
 inline uint8_t shakeAnimationPercent(ShakePhase phase) {
@@ -191,7 +192,7 @@ private:
     float _peak_abs_accel = 0;
     uint32_t _peak_window_start_ms = 0;
 
-    // 摇动检测：静止 → 首次峰值 → 反向峰值 → 连续回稳
+    // 摇动检测：静止 → 首次峰值 → 反向峰值 → 连续回稳，或单次触发后等待回中立
     ShakePhase _shake_phase = SHAKE_PHASE_IDLE;
     int8_t     _shake_axis_sign = 0;   // 原始 ax 首峰符号
     int8_t     _shake_direction = 0;   // UI 语义：+1=left, -1=right
