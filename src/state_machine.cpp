@@ -6,6 +6,7 @@
 #include "page_registry.h"
 #include "buttons.h"
 #include "settings_module.h"
+#include "what2eat_module.h"
 
 #include <Arduino.h>
 
@@ -154,6 +155,15 @@ void StateMachine::updateButton(ButtonEvent b, uint32_t now_ms) {
         return;
     }
     if (b == BUTTON_NONE) return;
+    if (_s.page == PAGE_PORTRAIT_WHAT2EAT && b == BUTTON_PREV) {
+        _s.lastInputMs = now_ms;
+        if (_s.system == SYSTEM_AMBIENT || _s.system == SYSTEM_LIGHT_SLEEP) {
+            _s.system = SYSTEM_ACTIVE;
+        }
+        const bool picked = dn_what2eat_pick();
+        Serial.printf("[D][W2E] B pick %s\n", picked ? "ok" : "ignored-empty");
+        return;
+    }
     if (_s.page == PAGE_PORTRAIT_SETTINGS) {
         if (b == BUTTON_NEXT) {
             _s.settingsSelectedIndex = (uint8_t)((_s.settingsSelectedIndex + 1) % 4);

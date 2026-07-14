@@ -166,6 +166,32 @@
           "--output", "{output}", "--lv-font-name", "lv_font_24_bold", "--no-compress"
         ]
       }
+    },
+    {
+      "id": "lv_font_16_dynamic",
+      "font_sources": [
+        "src/fonts/NotoSansSC-VF.ttf"
+      ],
+      "output": "src/fonts/lv_font_16_dynamic.c",
+      "manifest": ".cnfontnest/lv_font_16_dynamic.manifest.json",
+      "converter": {
+        "name": "lv_font_conv",
+        "version": "1.5.3",
+        "version_command": ["lv_font_conv", "--version"],
+        "command": [
+          "lv_font_conv",
+          "--font", "src/fonts/NotoSansSC-VF.ttf",
+          "-r", "0x20-0x7F",
+          "-r", "0x2000-0x206F",
+          "-r", "0x3000-0x303F",
+          "-r", "0x3040-0x30FF",
+          "-r", "0x4E00-0x9FFF",
+          "-r", "0xFF00-0xFFEF",
+          "--symbols", "{symbols}",
+          "--size", "16", "--bpp", "1", "--format", "lvgl", "--lv-include", "lvgl.h",
+          "--output", "{output}", "--lv-font-name", "lv_font_16_dynamic", "--no-compress"
+        ]
+      }
     }
   ]
 }

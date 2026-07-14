@@ -46,7 +46,6 @@ namespace desknest {
 #define DESKNEST_TOKENNEST_STATUS_URL ""
 #endif
 
-
 // ============================================================================
 // 4 轴状态枚举（核心 —— 见 plan §2）
 // ============================================================================
@@ -80,7 +79,7 @@ enum OrientationState : uint8_t {
 enum UIPage : uint8_t {
     PAGE_PORTRAIT_OVERVIEW = 0,
     PAGE_PORTRAIT_AI_USAGE,
-    PAGE_PORTRAIT_MENU,          // 今天吃什么（新）
+    PAGE_PORTRAIT_WHAT2EAT,
     PAGE_PORTRAIT_ENVIRONMENT,
     PAGE_PORTRAIT_SETTINGS,
     PAGE_LANDSCAPE_OVERVIEW,

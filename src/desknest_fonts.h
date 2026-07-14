@@ -15,6 +15,7 @@
 // Regular fonts
 LV_FONT_DECLARE(lv_font_14);
 LV_FONT_DECLARE(lv_font_16);
+LV_FONT_DECLARE(lv_font_16_dynamic);
 LV_FONT_DECLARE(lv_font_24);
 
 // Bold fonts

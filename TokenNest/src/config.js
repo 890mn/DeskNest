@@ -1,7 +1,7 @@
 // src/config.js
 // TokenNest 配置加载
-// 优先级：环境变量 (TN_*) > config/tokennest.yaml > 默认值
-// .env 文件通过 node --env-file=.env 加载（Node 20+）；本文件不强制依赖
+// 优先级：已存在的环境变量 (TN_*) > .env > config/tokennest.yaml > 默认值
+// Node 18 是受支持基线，因此在这里加载 .env，不依赖 Node 20 的 --env-file。
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -9,6 +9,35 @@ import os from 'node:os';
 import { tn_logger } from './logger.js';
 
 const log = tn_logger('cfg');
+
+export const tn_load_env_file = (envPath, target = process.env) => {
+    if (!envPath || !fs.existsSync(envPath)) return { loaded: false, keys: [] };
+
+    const loadedKeys = [];
+    const text = fs.readFileSync(envPath, 'utf8').replace(/^\uFEFF/, '');
+    for (const raw of text.split(/\r?\n/)) {
+        const line = raw.trim();
+        if (!line || line.startsWith('#')) continue;
+        const match = line.match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+        if (!match) continue;
+
+        const key = match[1];
+        let value = match[2].trim();
+        if ((value.startsWith('"') && value.endsWith('"')) ||
+            (value.startsWith("'") && value.endsWith("'"))) {
+            value = value.slice(1, -1);
+        } else {
+            value = value.replace(/\s+#.*$/, '').trim();
+        }
+
+        // Shell/NSSM 显式注入的变量优先，不让 .env 静默覆盖运行环境。
+        if (target[key] === undefined) {
+            target[key] = value;
+            loadedKeys.push(key);
+        }
+    }
+    return { loaded: true, keys: loadedKeys };
+};
 
 const DEFAULTS = {
     server: { host: '0.0.0.0', port: 8787 },
@@ -85,7 +114,9 @@ const tn_deep_merge = (base, over) => {
 
 const tn_expand_home = (p) => p.startsWith('~/') ? path.resolve(os.homedir(), p.slice(2)) : p;
 
-export const tn_load_config = (yamlPath) => {
+export const tn_load_config = (yamlPath, { envPath } = {}) => {
+    const envResult = tn_load_env_file(envPath);
+    if (envResult.loaded) log.info(`loaded env file: ${envPath} (${envResult.keys.length} values)`);
     let yamlCfg = {};
     if (yamlPath && fs.existsSync(yamlPath)) {
         try {

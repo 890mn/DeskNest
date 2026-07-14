@@ -16,7 +16,7 @@
 #include "buttons.h"
 #include "ai_usage_module.h"
 #include "boot_splash.h"
-#include "desk_remote_config.h"
+#include "what2eat_module.h"
 
 #include <Arduino.h>
 #include <esp_log.h>
@@ -34,6 +34,7 @@ uint32_t g_loop_count = 0;
 namespace {
 
 constexpr uint32_t HEARTBEAT_INTERVAL_MS = 1000;
+constexpr uint32_t BOOT_REMOTE_STACK_BYTES = 8192;
 
 const char* gesture_event_name(GestureEvent event) {
     switch (event) {
@@ -132,7 +133,7 @@ const char* pageName(UIPage p) {
     switch (p) {
         case PAGE_PORTRAIT_OVERVIEW:    return "P_OVR";
         case PAGE_PORTRAIT_AI_USAGE:    return "P_AI";
-        case PAGE_PORTRAIT_MENU:        return "P_MENU";
+        case PAGE_PORTRAIT_WHAT2EAT:    return "P_W2E";
         case PAGE_PORTRAIT_ENVIRONMENT: return "P_ENV";
         case PAGE_PORTRAIT_SETTINGS:    return "P_SET";
         case PAGE_LANDSCAPE_OVERVIEW:   return "L_OVR";
@@ -203,12 +204,19 @@ void boot_remote_task(void*) {
     boot_remote_publish(status);
 
     dn_ai_usage_service_begin();
-    dn_desk_remote_config_begin();
+    dn_what2eat_begin();
 
     bool boot_complete = false;
+    uint32_t last_stack_report_ms = 0;
     while (true) {
         dn_ai_usage_service_tick();
-        dn_desk_remote_config_tick();
+        dn_what2eat_tick();
+        const uint32_t stack_now = millis();
+        if (stack_now - last_stack_report_ms >= 30000) {
+            last_stack_report_ms = stack_now;
+            Serial.printf("[D][BOOT] remote stack free=%uB\n",
+                          static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
+        }
         // Keep this task alive as the sole owner of AI network/cache mutation;
         // the main loop only consumes read-only snapshots.
         if (boot_complete) {
@@ -248,8 +256,12 @@ void boot_remote_task(void*) {
                           (unsigned long)elapsed, (int)status.failureReason);
             status.running = false;
             boot_remote_publish(status);
-            vTaskDelete(nullptr);
-            return;
+            // Keep the sole network owner alive after the boot acceptance
+            // timeout. The UI may show BOOT_FAILURE, but later AI recovery and
+            // an explicitly published what2eat revision must still be able to
+            // synchronize without a reboot.
+            boot_complete = true;
+            continue;
         }
 
         boot_remote_publish(status);
@@ -276,7 +288,7 @@ void boot_step(uint32_t now) {
                 boot_remote_publish({});
                 xTaskCreatePinnedToCore(boot_remote_task,
                                         "dn_boot_remote",
-                                        6144,
+                                        BOOT_REMOTE_STACK_BYTES,
                                         nullptr,
                                         1,
                                         &g_boot_remote_task,

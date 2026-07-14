@@ -17,7 +17,7 @@
 #include "ai_usage_module.h"
 #include "focus_module.h"
 #include "settings_module.h"
-#include "desk_remote_config.h"
+#include "what2eat_module.h"
 
 #include <stdint.h>
 
@@ -229,25 +229,19 @@ struct UiCustomProps {
     const char* hintText = "";
 };
 
-struct UiMenuCandidateProps {
-    const char* name = "";        // "番茄牛腩面"
-    const char* price = "";       // "¥28"  （已含符号）
-    uint8_t score = 0;            // 0-100，UI 显示 ÷10
-    bool active = false;          // 今日推荐（数据层决定）
+struct UiWhat2EatItemProps {
+    char name[32] = {};
+    uint16_t count = 0;
+    char price[10] = {};
+    uint8_t score = 0;
+    bool selected = false;
 };
 
-struct UiMenuGroupProps {
-    const char* name = "";        // "面食"
-    UiMenuCandidateProps candidates[6];
-    uint8_t candidateCount = 0;
-};
-
-struct UiMenuProps {
-    const char* ask = "";         // "今天，吃点热的？"
-    const char* lastMeal = "";    // "昨天 · 日式咖喱饭"
-    UiMenuGroupProps groups[4];
-    uint8_t groupCount = 0;
-    const char* diceHint = "";    // "[A] 重抽 · [B] 记下"
+struct UiWhat2EatProps {
+    What2EatState state = WHAT2EAT_ABSENT;
+    char recommendation[32] = {};
+    UiWhat2EatItemProps items[WHAT2EAT_MAX_ITEMS];
+    uint8_t itemCount = 0;
 };
 
 struct UiFaceDownProps {
@@ -301,7 +295,7 @@ struct UiModel {
     UiOverviewProps overview;
     UiHomeFocusProps homeFocus;
     UiAiUsageProps aiUsage;
-    UiMenuProps menu;
+    UiWhat2EatProps what2eat;
     UiEnvironmentProps environment;
     UiSettingsProps settings;
     UiLandscapeOverviewProps landscapeOverview;
@@ -347,9 +341,8 @@ struct UiModelInputs {
     uint8_t batteryPercent = 0;
     bool charging = false;
 
-    // Reserved for the Daily Choice sync flow. Keeping this input optional
-    // lets the home resolver ship before the persistence/API is implemented.
-    bool dailyChoicePending = false;
+    // Optional home-focus signal owned by the what2eat flow.
+    bool what2eatChoicePending = false;
 
     ShakePhase shakePhase = SHAKE_PHASE_IDLE;
     int8_t shakeDirection = 0;
@@ -380,7 +373,7 @@ inline ScreenMode dn_screen_mode_for_page(UIPage p) {
     switch (p) {
         case PAGE_PORTRAIT_OVERVIEW:    return SCREEN_PORTRAIT_OVERVIEW;
         case PAGE_PORTRAIT_AI_USAGE:
-        case PAGE_PORTRAIT_MENU:
+        case PAGE_PORTRAIT_WHAT2EAT:
         case PAGE_PORTRAIT_ENVIRONMENT:
         case PAGE_PORTRAIT_SETTINGS:    return SCREEN_PORTRAIT_DETAIL;
         case PAGE_LANDSCAPE_OVERVIEW:   return SCREEN_LANDSCAPE_OVERVIEW;
@@ -434,6 +427,33 @@ inline UiUsageItemProps dn_usage_item(const AIUsageItemStatus& src) {
     return item;
 }
 
+inline void dn_apply_what2eat_snapshot(UiModel& model,
+                                       const What2EatSnapshot& snapshot) {
+    model.what2eat = {};
+    model.what2eat.state = snapshot.state;
+    model.what2eat.itemCount = snapshot.itemCount > WHAT2EAT_MAX_ITEMS
+        ? WHAT2EAT_MAX_ITEMS
+        : snapshot.itemCount;
+
+    const bool selection_valid = snapshot.selectedIndex >= 0
+        && (uint8_t)snapshot.selectedIndex < model.what2eat.itemCount;
+    if (selection_valid) {
+        snprintf(model.what2eat.recommendation,
+                 sizeof(model.what2eat.recommendation), "%s",
+                 snapshot.items[(uint8_t)snapshot.selectedIndex].name);
+    }
+
+    for (uint8_t i = 0; i < model.what2eat.itemCount; ++i) {
+        UiWhat2EatItemProps& out = model.what2eat.items[i];
+        const What2EatItem& in = snapshot.items[i];
+        snprintf(out.name, sizeof(out.name), "%s", in.name);
+        out.count = in.count;
+        snprintf(out.price, sizeof(out.price), "%s", in.price);
+        out.score = in.score;
+        out.selected = selection_valid && i == (uint8_t)snapshot.selectedIndex;
+    }
+}
+
 inline UiSettingsRowProps dn_settings_row(const SettingsRowStatus& src) {
     UiSettingsRowProps row;
     row.label = src.label;
@@ -453,7 +473,7 @@ inline UiCustomCardProps dn_custom_card(const char* label,
 }
 
 inline UiHomeFocusProps dn_resolve_home_focus(const AIUsageStatus& ai,
-                                              bool dailyChoicePending) {
+                                              bool what2eatChoicePending) {
     UiHomeFocusProps out;
     // An explicit warning wins over the aggregate percentage: it may carry
     // source/cache/network context that a percentage alone cannot express.
@@ -471,11 +491,11 @@ inline UiHomeFocusProps dn_resolve_home_focus(const AIUsageStatus& ai,
         out.actionLabel = "查看 AI";
         out.priority = 90;
         out.actionable = true;
-    } else if (dailyChoicePending) {
+    } else if (what2eatChoicePending) {
         out.kind = HOME_FOCUS_LIFE_REMINDER;
-        out.title = "今天吃什么?";
-        out.detail = "还没有决定今天的选择";
-        out.actionLabel = "去选择";
+        out.title = "what2eat";
+        out.detail = "今天还没有完成摇号";
+        out.actionLabel = "打开 what2eat";
         out.priority = 60;
         out.actionable = true;
     }
@@ -554,7 +574,7 @@ inline UiModel dn_build_ui_model_from_inputs(const UiModelInputs& in) {
     m.aiUsage.nextRefreshInSec = aiStatus.nextRefreshInSec;
     m.overview.aiTotalPercent = aiStatus.totalPercent;
 
-    m.homeFocus = dn_resolve_home_focus(aiStatus, in.dailyChoicePending);
+    m.homeFocus = dn_resolve_home_focus(aiStatus, in.what2eatChoicePending);
     switch (s.settingsValues[0]) {
         case 1:
             m.homeFocus.kind = HOME_FOCUS_AI_RISK;
@@ -565,9 +585,9 @@ inline UiModel dn_build_ui_model_from_inputs(const UiModelInputs& in) {
             break;
         case 2:
             m.homeFocus.kind = HOME_FOCUS_LIFE_REMINDER;
-            m.homeFocus.title = "Today choice";
-            m.homeFocus.detail = "Choose what to eat today";
-            m.homeFocus.actionLabel = "Open menu";
+            m.homeFocus.title = "what2eat choice";
+            m.homeFocus.detail = "Choose with what2eat";
+            m.homeFocus.actionLabel = "Open what2eat";
             m.homeFocus.actionable = true;
             break;
         case 3:
@@ -650,66 +670,6 @@ inline UiModel dn_build_ui_model_from_inputs(const UiModelInputs& in) {
     m.animation.shakeProgressPct = shakeAnimationPercent(in.shakePhase);
     m.animation.pageChanged = false;
     m.animation.forceFullRedraw = false;
-
-    // ---- 今天吃什么（MenuModule mock） ----
-    m.menu.ask = "今天 番茄牛腩面";
-    m.menu.lastMeal = "昨天 日式咖喱饭";
-
-    {
-        auto& g = m.menu.groups[0];
-        g.name = "面食";
-        g.candidateCount = 2;
-        g.candidates[0].name = "番茄牛腩面";
-        g.candidates[0].price = "28";
-        g.candidates[0].score = 84;
-        g.candidates[0].active = false;
-        g.candidates[1].name = "葱油拌面";
-        g.candidates[1].price = "12";
-        g.candidates[1].score = 72;
-        g.candidates[1].active = false;
-    }
-    {
-        auto& g = m.menu.groups[1];
-        g.name = "汤锅";
-        g.candidateCount = 2;
-        g.candidates[0].name = "砂锅豆腐汤";
-        g.candidates[0].price = "22";
-        g.candidates[0].score = 81;
-        g.candidates[0].active = true;   // active = 推荐
-        g.candidates[1].name = "韩式泡菜锅";
-        g.candidates[1].price = "35";
-        g.candidates[1].score = 78;
-        g.candidates[1].active = false;
-    }
-    {
-        auto& g = m.menu.groups[2];
-        g.name = "小炒";
-        g.candidateCount = 1;
-        g.candidates[0].name = "麻辣香锅";
-        g.candidates[0].price = "42";
-        g.candidates[0].score = 87;
-        g.candidates[0].active = false;
-    }
-    m.menu.groupCount = 3;
-    m.menu.diceHint = "A pick  B save";
-
-    // The desktop editor is optional. A valid TokenNest payload replaces the
-    // built-in sample without changing the renderer contract.
-    const DeskRemoteConfig& desk = dn_desk_remote_config();
-    if (desk.ready) {
-        m.menu.ask = desk.today;
-        m.menu.lastMeal = desk.yesterday;
-        m.menu.groupCount = 1;
-        auto& remote = m.menu.groups[0];
-        remote.name = "";
-        remote.candidateCount = 5;
-        for (uint8_t i = 0; i < 5; ++i) {
-            remote.candidates[i].name = desk.items[i].name;
-            remote.candidates[i].price = desk.items[i].price;
-            remote.candidates[i].score = desk.items[i].score;
-            remote.candidates[i].active = desk.items[i].active;
-        }
-    }
 
     return m;
 }

@@ -56,6 +56,7 @@ UiModel dn_build_ui_model() {
     in.shakeDirection = g_gesture.shakeDirection();
 
     UiModel model = dn_build_ui_model_from_inputs(in);
+    dn_apply_what2eat_snapshot(model, dn_what2eat_snapshot());
     model.header.gestureConfirmEnabled = g_state.gestureConfirmEnabled();
 #if DESKNEST_GESTURE_CONFIRM_BUTTON == GESTURE_CONFIRM_B
     model.header.gestureConfirmKey = "B";
@@ -82,7 +83,7 @@ UiModel dn_build_ui_model() {
     model.aiUsage.serverNow = aiStatus.serverNow;
     model.aiUsage.nextRefreshInSec = aiStatus.nextRefreshInSec;
     model.overview.aiTotalPercent = aiStatus.totalPercent;
-    model.homeFocus = dn_resolve_home_focus(aiStatus, in.dailyChoicePending);
+    model.homeFocus = dn_resolve_home_focus(aiStatus, in.what2eatChoicePending);
     model.overview.aiStatusText = aiStatus.fromCache ? "cache" : "demo";
     model.overview.updatedAtText = aiStatus.updatedAtText;
     const char* net_time = boot_active ? "" : dn_ai_usage_time_text();

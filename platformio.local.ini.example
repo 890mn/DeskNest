@@ -1,7 +1,7 @@
 ; DeskNest - platformio.local.ini.example
 ; 栖屏 DeskNest — 本机个人配置模板（入库，复制为 platformio.local.ini 后填入）
 ;
-; 为什么有这个文件：SSID/密码/TokenNest URL 是个人凭证或家庭网络环境,
+; 为什么有这个文件：SSID/密码/TokenNest URL/设备 token 是个人凭证或家庭网络环境,
 ; 不应该 commit 到 git。PIO 支持 platformio.local.ini 这样的"按机器配置"
 ; 文件自动从 .example 复制。
 ;

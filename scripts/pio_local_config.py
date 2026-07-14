@@ -117,18 +117,31 @@ def _write_header(project_dir, secrets):
 
 
 def _remove_stale_firmware_outputs(project_dir, header_path):
-    """Remove rebuildable firmware outputs when secrets are newer.
+    """Remove rebuildable firmware outputs/objects when secrets are newer.
 
     PlatformIO/SCons sometimes recompiles objects but keeps an older linked
-    firmware image for upload. If the generated credentials header is newer
-    than the final firmware artifacts, delete those artifacts so the linker
-    must produce a fresh image.
+    firmware image for upload. It can also retain source objects even though
+    the generated header is listed in their compiler dependency file. If the
+    generated credentials header is newer than a build artifact, remove that
+    artifact so the next invocation must compile/link with the new secrets.
     """
     build_dir = os.path.join(project_dir, ".pio", "build", "DeskNest")
     if not os.path.isdir(build_dir) or not os.path.exists(header_path):
         return
 
     header_mtime = os.path.getmtime(header_path)
+    stale_objects = 0
+    for root, _dirs, files in os.walk(build_dir):
+        for name in files:
+            if not name.endswith((".o", ".d")):
+                continue
+            path = os.path.join(root, name)
+            if os.path.getmtime(path) < header_mtime:
+                os.remove(path)
+                stale_objects += 1
+    if stale_objects:
+        print(f"[pio_local_config] removed {stale_objects} stale compile artifacts")
+
     for name in ("firmware.elf", "firmware.bin", "firmware.map"):
         path = os.path.join(build_dir, name)
         if os.path.exists(path) and os.path.getmtime(path) < header_mtime:
@@ -159,13 +172,11 @@ def _inject(project_dir, local_ini_path, secrets):
         env.Depends(target, header_path)
         env.Depends(target, local_ini_path)
 
-    # Log which macros are now defined. Never print secrets in plaintext.
+    # Log only presence and length. SSIDs and local service URLs are also
+    # machine-specific configuration and must not leak through build logs.
     for local_key, macro in KEYS:
         value = secrets.get(local_key, "")
-        if local_key == "wifi_pass" and value:
-            status = f"(set, len={len(value)})"
-        else:
-            status = f'"{_c_escape(value)}"' if value else "(empty -> #ifndef default)"
+        status = f"(set, len={len(value)})" if value else "(empty -> #ifndef default)"
         print(f"[pio_local_config]   {macro} = {status}")
 
 

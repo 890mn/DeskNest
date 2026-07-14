@@ -5,6 +5,14 @@
 
 using namespace desknest;
 
+namespace desknest {
+int g_test_what2eat_pick_calls = 0;
+bool dn_what2eat_pick() {
+    ++g_test_what2eat_pick_calls;
+    return true;
+}
+}
+
 uint32_t g_mock_millis = 0;
 SerialClass Serial;
 
@@ -16,6 +24,7 @@ void setUp(void) {
     resetClock();
     g_gesture.begin();
     g_state.begin();
+    g_test_what2eat_pick_calls = 0;
 }
 
 void tearDown(void) {}
@@ -76,6 +85,19 @@ void test_settings_uses_a_to_select_and_b_to_cycle_current_value() {
     TEST_ASSERT_EQUAL(PAGE_PORTRAIT_SETTINGS, g_state.snapshot().page);
 }
 
+void test_what2eat_b_short_picks_once_and_b_long_keeps_back_behavior() {
+    g_state.forcePage(PAGE_PORTRAIT_WHAT2EAT);
+    g_state.forceSystem(SYSTEM_AMBIENT);
+    g_state.updateButton(BUTTON_PREV, g_mock_millis);
+    TEST_ASSERT_EQUAL_INT(1, g_test_what2eat_pick_calls);
+    TEST_ASSERT_EQUAL(PAGE_PORTRAIT_WHAT2EAT, g_state.snapshot().page);
+    TEST_ASSERT_EQUAL(SYSTEM_ACTIVE, g_state.snapshot().system);
+
+    g_state.updateButton(BUTTON_BACK, g_mock_millis + 100);
+    TEST_ASSERT_EQUAL_INT(1, g_test_what2eat_pick_calls);
+    TEST_ASSERT_EQUAL(PAGE_PORTRAIT_OVERVIEW, g_state.snapshot().page);
+}
+
 int main(int argc, char **argv) {
     UNITY_BEGIN();
     RUN_TEST(test_runtime_rotate_to_landscape_is_ignored_for_current_mvp);
@@ -83,5 +105,6 @@ int main(int argc, char **argv) {
     RUN_TEST(test_face_down_and_face_up_restore_portrait_page);
     RUN_TEST(test_short_press_buttons_do_not_switch_pages_in_gesture_first_mode);
     RUN_TEST(test_settings_uses_a_to_select_and_b_to_cycle_current_value);
+    RUN_TEST(test_what2eat_b_short_picks_once_and_b_long_keeps_back_behavior);
     return UNITY_END();
 }

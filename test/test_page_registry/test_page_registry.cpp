@@ -8,7 +8,7 @@ void test_portrait_registry_reports_count_and_titles() {
     TEST_ASSERT_EQUAL_UINT8(4, dn_page_group_count(PAGE_GROUP_PORTRAIT));
     TEST_ASSERT_EQUAL_STRING("DeskNest", dn_page_title_from_registry(PAGE_PORTRAIT_OVERVIEW));
     TEST_ASSERT_EQUAL_STRING("AI Left", dn_page_title_from_registry(PAGE_PORTRAIT_AI_USAGE));
-    TEST_ASSERT_EQUAL_STRING("今天吃什么", dn_page_title_from_registry(PAGE_PORTRAIT_MENU));
+    TEST_ASSERT_EQUAL_STRING("what2eat", dn_page_title_from_registry(PAGE_PORTRAIT_WHAT2EAT));
     TEST_ASSERT_NULL(dn_find_page_def(PAGE_PORTRAIT_ENVIRONMENT));
     TEST_ASSERT_EQUAL_STRING("Settings", dn_page_title_from_registry(PAGE_PORTRAIT_SETTINGS));
 }
@@ -16,16 +16,16 @@ void test_portrait_registry_reports_count_and_titles() {
 void test_portrait_registry_cycles_next_and_previous() {
     TEST_ASSERT_EQUAL(PAGE_PORTRAIT_AI_USAGE,
                       dn_next_page_in_group(PAGE_GROUP_PORTRAIT, PAGE_PORTRAIT_OVERVIEW));
-    TEST_ASSERT_EQUAL(PAGE_PORTRAIT_MENU,
+    TEST_ASSERT_EQUAL(PAGE_PORTRAIT_WHAT2EAT,
                       dn_next_page_in_group(PAGE_GROUP_PORTRAIT, PAGE_PORTRAIT_AI_USAGE));
     TEST_ASSERT_EQUAL(PAGE_PORTRAIT_SETTINGS,
-                      dn_next_page_in_group(PAGE_GROUP_PORTRAIT, PAGE_PORTRAIT_MENU));
+                      dn_next_page_in_group(PAGE_GROUP_PORTRAIT, PAGE_PORTRAIT_WHAT2EAT));
     TEST_ASSERT_EQUAL(PAGE_PORTRAIT_OVERVIEW,
                       dn_next_page_in_group(PAGE_GROUP_PORTRAIT, PAGE_PORTRAIT_SETTINGS));
 
     TEST_ASSERT_EQUAL(PAGE_PORTRAIT_SETTINGS,
                       dn_prev_page_in_group(PAGE_GROUP_PORTRAIT, PAGE_PORTRAIT_OVERVIEW));
-    TEST_ASSERT_EQUAL(PAGE_PORTRAIT_MENU,
+    TEST_ASSERT_EQUAL(PAGE_PORTRAIT_WHAT2EAT,
                       dn_prev_page_in_group(PAGE_GROUP_PORTRAIT, PAGE_PORTRAIT_SETTINGS));
 }
 

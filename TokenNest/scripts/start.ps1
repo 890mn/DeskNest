@@ -21,5 +21,9 @@ if (-not (Test-Path config\tokennest.yaml)) {
     Write-Host "[start] copying config template -> config\tokennest.yaml"
     Copy-Item config\tokennest.example.yaml config\tokennest.yaml
 }
+if (-not (Test-Path .env)) {
+    Write-Host "[start] copying environment template -> .env"
+    Copy-Item .env.example .env
+}
 Write-Host "[start] starting TokenNest..."
 npm start

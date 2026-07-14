@@ -1,33 +1,98 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>DeskNest 控制台</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>DeskNest what2eat 管理</title>
   <style>
-    :root{--bg:#0f1419;--card:#1a2128;--line:#2a3447;--text:#ece8dc;--muted:#8b95a8;--brand:#9cb89b;--sand:#d4b896;--warn:#c97c7c}*{box-sizing:border-box}body{margin:0;background:#0b1015;color:var(--text);font:14px system-ui,"Microsoft YaHei",sans-serif}main{max-width:980px;margin:auto;padding:32px 20px 56px}header{display:flex;align-items:end;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:18px;margin-bottom:18px}h1{margin:0;font-size:25px}header p,.hint{color:var(--muted);margin:6px 0 0}.badge{color:var(--brand);font-size:12px}.grid{display:grid;grid-template-columns:1.2fr .8fr;gap:16px}.card{background:var(--card);border:1px solid var(--line);border-radius:9px;padding:16px}.card h2{font-size:16px;margin:0 0 14px;color:var(--brand)}label{display:block;color:var(--muted);font-size:12px}input,select{width:100%;margin:6px 0 12px;background:#10161c;border:1px solid var(--line);border-radius:5px;color:var(--text);padding:9px;font:inherit}table{width:100%;border-collapse:collapse}th{text-align:left;color:var(--muted);font-weight:400;font-size:12px;padding:0 4px 7px}td{padding:3px 4px}td input{margin:0;padding:7px;min-width:0}.check{width:17px;height:17px;accent-color:var(--brand)}button{border:0;border-radius:6px;padding:10px 13px;background:var(--brand);color:#10161c;font-weight:700;cursor:pointer}.secondary{background:#27313b;color:var(--text)}.actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}.usage{display:grid;gap:8px}.usage div{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line)}.usage span{color:var(--muted)}#notice{min-height:20px;color:var(--sand);margin-top:12px}@media(max-width:720px){.grid{grid-template-columns:1fr}main{padding:20px 12px}header{align-items:start;flex-direction:column}}
+    :root{--bg:#0b1015;--card:#1a2128;--line:#2a3447;--text:#ece8dc;--muted:#8b95a8;--brand:#9cb89b;--sand:#d4b896;--danger:#cf8585}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px system-ui,"Microsoft YaHei",sans-serif}main{max-width:980px;margin:auto;padding:32px 20px 56px}header{display:flex;align-items:end;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:18px;margin-bottom:18px}h1{margin:0;font-size:25px}header p,.hint{color:var(--muted);margin:6px 0 0}.badge{color:var(--brand);font-size:12px}.grid{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:16px}.card{background:var(--card);border:1px solid var(--line);border-radius:9px;padding:16px}.card h2{font-size:16px;margin:0 0 14px;color:var(--brand)}label{display:block;color:var(--muted);font-size:12px;margin-bottom:10px}input,select{width:100%;background:#10161c;border:1px solid var(--line);border-radius:5px;color:var(--text);padding:9px;font:inherit;margin-top:5px}table{width:100%;border-collapse:collapse;table-layout:fixed}th{text-align:left;color:var(--muted);font-weight:400;font-size:12px;padding:0 4px 7px}td{padding:4px}td input{padding:7px;min-width:0;margin:0}.col-name{width:40%}.col-count{width:18%}.col-price{width:20%}.col-score{width:22%}.stack{display:grid;gap:12px}.status{display:grid;gap:8px}.status div{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line)}.status span{color:var(--muted)}button{border:0;border-radius:6px;padding:10px 13px;background:var(--brand);color:#10161c;font-weight:700;cursor:pointer}button:disabled{opacity:.45;cursor:wait}.secondary{background:#27313b;color:var(--text)}.actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:14px}#notice{min-height:20px;color:var(--sand);margin-top:12px;white-space:pre-wrap}.error{color:var(--danger)!important}@media(max-width:760px){.grid{grid-template-columns:1fr}main{padding:20px 12px}header{align-items:start;flex-direction:column;gap:8px}}
   </style>
 </head>
 <body><main>
-  <header><div><h1>DeskNest 控制台</h1><p>今天吃什么  首页模块  手势和 AI 显示配置</p></div><div class="badge" id="connection">正在连接</div></header>
-  <div class="grid"><section class="card"><h2>今天吃什么</h2>
-    <label>今天<input id="today" maxlength="48"></label><label>昨天<input id="yesterday" maxlength="48"></label>
-    <table><thead><tr><th>推荐</th><th>菜名</th><th>价格</th><th>评分</th></tr></thead><tbody id="items"></tbody></table>
-  </section>
-  <section class="card"><h2>首页与交互</h2>
-    <label>首页模块<select id="homeMode"><option value="auto">自动</option><option value="ai">AI优先</option><option value="life">生活优先</option><option value="quiet">极简</option></select></label>
-    <label>手势确认<select id="gestureConfirm"><option value="true">开启</option><option value="false">关闭</option></select></label>
-    <label>界面主题<select id="theme"><option value="dark">深色</option><option value="soft">柔和</option></select></label>
-    <label>AI 提醒阈值<input id="aiWarningPercent" type="number" min="50" max="100"></label>
-  </section>
-  <section class="card"><h2>AI 状态</h2><div id="usage" class="usage"><div><span>加载中</span><b>--</b></div></div><p class="hint">AI 密钥不会在网页中显示或修改。TokenNest 继续通过本地配置文件保管密钥。</p></section>
-  <section class="card"><h2>保存</h2><p class="hint">保存后电脑端配置立即生效。板端同步接口将在下一轮固件接入后读取同一份配置。</p><div class="actions"><button class="secondary" id="reload">重新读取</button><button id="save">保存配置</button></div><div id="notice"></div></section>
+  <header><div><h1>what2eat 管理</h1><p>编辑模板只保存草稿；“更新发送”才创建开发板可见的新 revision。</p></div><div class="badge" id="connection">正在连接</div></header>
+  <div class="grid">
+    <section class="card">
+      <h2>候选内容</h2>
+      <table><thead><tr><th class="col-name">吃什么</th><th class="col-count">次数</th><th class="col-price">价格</th><th class="col-score">评分</th></tr></thead><tbody id="items"></tbody></table>
+      <p class="hint">最多 15 项。留空的行不会发送；评分为 1–10，步进 0.5（如 8.5）；次数是模板管理的显示值，B pick 不会修改次数。</p>
+    </section>
+    <aside class="stack">
+      <section class="card"><h2>发布状态</h2><div class="status">
+        <div><span>草稿版本</span><b id="draftVersion">0</b></div>
+        <div><span>已发布 revision</span><b id="publishedRevision">--</b></div>
+        <div><span>开发板 ACK</span><b id="ackStatus">--</b></div>
+      </div></section>
+      <section class="card"><h2>本机管理</h2>
+        <label>管理令牌（仅当服务已配置时需要）<input id="adminToken" type="password" autocomplete="off" placeholder="不会保存到浏览器"></label>
+        <div class="actions"><button class="secondary" id="reload">重新读取</button><button class="secondary" id="save">保存草稿</button><button id="publish">更新发送</button></div>
+        <div id="notice"></div>
+      </section>
+    </aside>
+    <section class="card"><h2>首页与交互设置</h2>
+      <label>首页模块<select id="homeMode"><option value="auto">自动</option><option value="ai">AI 优先</option><option value="life">生活优先</option><option value="quiet">极简</option></select></label>
+      <label>手势确认<select id="gestureConfirm"><option value="true">开启</option><option value="false">关闭</option></select></label>
+      <label>界面主题<select id="theme"><option value="dark">深色</option><option value="soft">柔和</option></select></label>
+      <label>AI 提醒阈值<input id="aiWarningPercent" type="number" min="50" max="100"></label>
+      <div class="actions"><button class="secondary" id="saveSettings">保存设置</button></div>
+    </section>
+    <section class="card"><h2>AI 状态</h2><div id="usage" class="status"></div><p class="hint">AI 凭证仍由 TokenNest 本地配置管理，不在网页中读取或修改。</p></section>
   </div>
 </main><script>
-  const $=id=>document.getElementById(id);let data;
-  function itemRow(item,index){return `<tr><td><input class="check active" data-i="${index}" type="radio" name="active" ${item.active?'checked':''}></td><td><input class="name" data-i="${index}" value="${item.name}"></td><td><input class="price" data-i="${index}" inputmode="decimal" value="${item.price}"></td><td><input class="score" data-i="${index}" type="number" min="0" max="100" value="${item.score}"></td></tr>`}
-  function usageView(usage){const c=usage?.chatgpt?.primaryPercent??'--',m=usage?.minimax?.primaryPercent??'--';$('usage').innerHTML=`<div><span>ChatGPT 5h</span><b>${c}%</b></div><div><span>MiniMax 5h</span><b>${m}%</b></div><div><span>同步状态</span><b>${usage?.warningText||'正常'}</b></div>`}
-  function render(next){data=next;$('today').value=data.menu.today;$('yesterday').value=data.menu.yesterday;$('items').innerHTML=data.menu.items.map(itemRow).join('');$('homeMode').value=data.settings.homeMode;$('gestureConfirm').value=String(data.settings.gestureConfirm);$('theme').value=data.settings.theme;$('aiWarningPercent').value=data.settings.aiWarningPercent;usageView(data.usage);$('connection').textContent='已连接 TokenNest'}
-  async function load(){try{const r=await fetch('/api/desknest');if(!r.ok)throw Error();render(await r.json());$('notice').textContent=''}catch{$('connection').textContent='连接失败';$('notice').textContent='无法读取 TokenNest 配置'}}
-  function collect(){const items=[...document.querySelectorAll('#items tr')].map((row,i)=>({name:row.querySelector('.name').value,price:row.querySelector('.price').value,score:+row.querySelector('.score').value,active:row.querySelector('.active').checked}));return{menu:{today:$('today').value,yesterday:$('yesterday').value,items},settings:{homeMode:$('homeMode').value,gestureConfirm:$('gestureConfirm').value==='true',theme:$('theme').value,aiWarningPercent:+$('aiWarningPercent').value}}}
-  $('save').onclick=async()=>{try{const r=await fetch('/api/desknest',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(collect())});if(!r.ok)throw Error();const saved=await r.json();render({...saved,usage:data.usage});$('notice').textContent='已保存'}catch{$('notice').textContent='保存失败'}};$('reload').onclick=load;load();
+  'use strict';
+  const $=id=>document.getElementById(id);
+  const MAX_ITEMS=15;
+  let state=null,deskState=null;
+
+  function adminHeaders(json=false){const headers={};const token=$('adminToken').value;if(token)headers['X-TokenNest-Admin-Token']=token;if(json)headers['Content-Type']='application/json';return headers}
+  function setNotice(text,isError=false){$('notice').textContent=text;$('notice').classList.toggle('error',isError)}
+  function setBusy(busy){for(const id of ['reload','save','publish','saveSettings'])$(id).disabled=busy}
+  function input(type,className,value){const el=document.createElement('input');el.type=type;el.className=className;el.value=String(value??'');return el}
+  function rowFor(item,index){
+    const row=document.createElement('tr');row.dataset.id=item?.id||`item-${index+1}`;
+    const name=input('text','name',item?.name||'');name.maxLength=31;
+    const count=input('number','count',item?.count??0);count.min='0';count.max='65535';count.step='1';
+    const price=input('text','price',item?.price??'0');price.maxLength=9;price.inputMode='decimal';
+    const scoreTenths=Number(item?.score);const scoreValue=Number.isFinite(scoreTenths)?scoreTenths/10:1;
+    const score=input('number','score',scoreValue.toFixed(1));score.min='1';score.max='10';score.step='0.5';score.inputMode='decimal';
+    for(const el of [name,count,price,score]){const cell=document.createElement('td');cell.append(el);row.append(cell)}
+    return row;
+  }
+  function render(next){
+    state=next;const rows=[];for(let i=0;i<MAX_ITEMS;i++)rows.push(rowFor(next.what2eat.items[i],i));$('items').replaceChildren(...rows);
+    $('draftVersion').textContent=String(next.draftVersion);
+    $('publishedRevision').textContent=next.published?String(next.published.revision):'--';
+    $('ackStatus').textContent=next.lastAck?`${next.lastAck.revision} / ${next.lastAck.status}`:'--';
+    $('connection').textContent='已连接 TokenNest';
+  }
+  function statusRow(label,value){const row=document.createElement('div');const left=document.createElement('span');const right=document.createElement('b');left.textContent=label;right.textContent=value;row.append(left,right);return row}
+  function renderDesk(next){
+    deskState=next;const settings=next.settings;$('homeMode').value=settings.homeMode;$('gestureConfirm').value=String(settings.gestureConfirm);$('theme').value=settings.theme;$('aiWarningPercent').value=String(settings.aiWarningPercent);
+    const chat=next.usage?.chatgpt?.primary?.usedPercent;const models=next.usage?.minimax?.models||[];const mini=models.reduce((max,model)=>Math.max(max,Number(model.primary?.usedPercent)||0),0);const health=[next.usage?.chatgpt?.stale?'ChatGPT stale':'',next.usage?.minimax?.stale?'MiniMax stale':''].filter(Boolean).join(' / ')||'正常';
+    $('usage').replaceChildren(statusRow('ChatGPT 5h',Number.isFinite(chat)?`${chat}%`:'--'),statusRow('MiniMax 5h',models.length?`${mini}%`:'--'),statusRow('同步状态',health));
+  }
+  async function request(url,options={}){
+    const response=await fetch(url,options);let body=null;try{body=await response.json()}catch{}
+    if(!response.ok){const error=new Error(body?.message||body?.error||`HTTP ${response.status}`);error.status=response.status;throw error}return body;
+  }
+  async function load(){setBusy(true);try{const [next,desk]=await Promise.all([request('/api/what2eat/draft',{headers:adminHeaders()}),request('/api/desknest',{headers:adminHeaders()})]);render(next);renderDesk(desk);setNotice('')}catch(error){$('connection').textContent='连接或授权失败';setNotice(error.message,true)}finally{setBusy(false)}}
+  function collect(){
+    const items=[];for(const row of document.querySelectorAll('#items tr')){const name=row.querySelector('.name').value.trim();if(!name)continue;const scoreValue=Number(row.querySelector('.score').value);items.push({id:row.dataset.id,name,count:Number(row.querySelector('.count').value),price:row.querySelector('.price').value.trim(),score:Number.isFinite(scoreValue)?Math.round(scoreValue*10):0})}return{items};
+  }
+  async function saveDraft(showNotice=true){
+    if(!state)throw new Error('请先读取草稿');
+    const saved=await request('/api/what2eat/draft',{method:'PUT',headers:adminHeaders(true),body:JSON.stringify({draftVersion:state.draftVersion,what2eat:collect()})});
+    state={...state,...saved};render(state);if(showNotice)setNotice('草稿已保存；开发板内容未改变');return saved;
+  }
+  async function publish(){
+    setBusy(true);try{const saved=await saveDraft(false);const released=await request('/api/what2eat/publish',{method:'POST',headers:adminHeaders(true),body:JSON.stringify({draftVersion:saved.draftVersion})});state.published={revision:released.revision,publishedAt:released.publishedAt,contentHash:released.contentHash};render(state);setNotice(`已发送 revision ${released.revision}，等待开发板应用并 ACK`)}catch(error){setNotice(error.message,true)}finally{setBusy(false)}
+  }
+  async function saveSettings(){
+    setBusy(true);try{const settings={homeMode:$('homeMode').value,gestureConfirm:$('gestureConfirm').value==='true',theme:$('theme').value,aiWarningPercent:Number($('aiWarningPercent').value)};const saved=await request('/api/desknest',{method:'PUT',headers:adminHeaders(true),body:JSON.stringify({settings})});deskState={...deskState,...saved};renderDesk(deskState);setNotice('设置已保存；what2eat 草稿和发布状态未改变')}catch(error){setNotice(error.message,true)}finally{setBusy(false)}
+  }
+  $('reload').addEventListener('click',load);
+  $('save').addEventListener('click',async()=>{setBusy(true);try{await saveDraft(true)}catch(error){setNotice(error.message,true)}finally{setBusy(false)}});
+  $('publish').addEventListener('click',publish);
+  $('saveSettings').addEventListener('click',saveSettings);
+  $('adminToken').addEventListener('change',load);
+  load();
 </script></body></html>

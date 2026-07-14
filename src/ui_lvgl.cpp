@@ -64,6 +64,7 @@ static lv_style_t sty_card;
 static lv_style_t sty_text24;
 static lv_style_t sty_advice24;
 static lv_style_t sty_text16;
+static lv_style_t sty_dynamic16;
 static lv_style_t sty_ascii14;
 static lv_style_t sty_ascii16;
 static lv_style_t sty_label16;
@@ -100,9 +101,14 @@ struct PageObjects {
     lv_obj_t* root = nullptr;
     bool built = false;
 
-    lv_obj_t* labels[24] = {};
+    // what2eat uses four labels per candidate and supports fifteen wire rows;
+    // keep enough slots for the dynamic row labels while retaining the shared
+    // page object storage used by the other pages.
+    lv_obj_t* labels[64] = {};
     lv_obj_t* bars[16] = {};
-    lv_obj_t* rows[8] = {};
+    lv_obj_t* rows[16] = {};
+    lv_obj_t* what2eatList = nullptr;
+    int8_t what2eatSelectedRow = -1;
     lv_obj_t* objs[24] = {};
 };
 
@@ -204,6 +210,13 @@ static void style_init_once() {
     lv_style_init(&sty_text16);
     lv_style_set_text_color(&sty_text16, lv_color_hex(C_TEXT));
     lv_style_set_text_font(&sty_text16, font_cn_body());
+
+    // what2eat content arrives after the firmware is flashed. Use the
+    // dedicated wide-coverage 1bpp font so published Chinese dish names do
+    // not depend on the static source scanner's current vocabulary.
+    lv_style_init(&sty_dynamic16);
+    lv_style_set_text_color(&sty_dynamic16, lv_color_hex(C_TEXT));
+    lv_style_set_text_font(&sty_dynamic16, &lv_font_16_dynamic);
 
     lv_style_init(&sty_ascii14);
     lv_style_set_text_color(&sty_ascii14, lv_color_hex(C_TEXT));
@@ -625,8 +638,8 @@ static void chrome_update(const UiModel& m) {
             snprintf(title_buf, sizeof(title_buf), "Refresh --");
         }
     }
-    if (m.view.page == PAGE_PORTRAIT_MENU) {
-        snprintf(title_buf, sizeof(title_buf), "A pick  B save");
+    if (m.view.page == PAGE_PORTRAIT_WHAT2EAT) {
+        snprintf(title_buf, sizeof(title_buf), "B pick");
     }
     if (m.view.page == PAGE_PORTRAIT_SETTINGS) {
         snprintf(title_buf, sizeof(title_buf), "A select  B switch");
@@ -984,7 +997,7 @@ static void update_overview(const UiModel& m) {
         snprintf(buf, sizeof(buf), "in %us", (unsigned)m.aiUsage.nextRefreshInSec);
         set_text(po.labels[18], buf);
     } else {
-        set_text(po.labels[18], "on demand");
+        set_text(po.labels[18], "ING");
     }
 
     set_text(po.labels[11], "ENVIRONMENT");
@@ -995,7 +1008,7 @@ static void update_overview(const UiModel& m) {
     if (m.environment.valid) {
         snprintf(buf, sizeof(buf), "%.1f°C", (double)m.environment.temperatureC);
         set_text(po.labels[13], buf);
-    snprintf(buf, sizeof(buf), "%.0f%%", (double)m.environment.humidityPct);
+        snprintf(buf, sizeof(buf), "%.0f%%", (double)m.environment.humidityPct);
         set_text(po.labels[14], buf);
         snprintf(buf, sizeof(buf), "%ulx", (unsigned)m.environment.lux);
         set_text(po.labels[15], buf);
@@ -1186,74 +1199,107 @@ static void update_ai_usage(const UiModel& m) {
     }
 }
 
-static void build_menu() {
-    PageObjects& po = page_objects(PAGE_PORTRAIT_MENU);
+static void build_what2eat() {
+    PageObjects& po = page_objects(PAGE_PORTRAIT_WHAT2EAT);
     if (po.built) return;
-    lv_obj_t* root = make_page_root(PAGE_PORTRAIT_MENU);
+    lv_obj_t* root = make_page_root(PAGE_PORTRAIT_WHAT2EAT);
     lv_obj_set_style_pad_gap(root, 5, 0);
 
-    lv_obj_t* prompt = lv_obj_create(root);
-    lv_obj_set_size(prompt, 220, 56);
-    lv_obj_add_style(prompt, &sty_card, 0);
-    lv_obj_set_style_pad_all(prompt, 8, 0);
-    po.labels[0] = make_label(prompt, &sty_brand16);
-    lv_obj_set_pos(po.labels[0], 0, 0);
-    lv_obj_set_width(po.labels[0], 200);
-    po.labels[1] = make_label(prompt, &sty_dim16);
-    lv_obj_set_pos(po.labels[1], 0, 26);
-    lv_obj_set_width(po.labels[1], 200);
+    lv_obj_t* focus = lv_obj_create(root);
+    lv_obj_set_size(focus, 220, 28);
+    lv_obj_add_style(focus, &sty_card, 0);
+    lv_obj_set_style_pad_hor(focus, 8, 0);
+    lv_obj_set_style_pad_ver(focus, 0, 0);
+    po.labels[0] = make_label(focus, &sty_dynamic16, "今日推荐：暂无信息");
+    lv_obj_set_style_text_color(po.labels[0], lv_color_hex(C_BRAND), 0);
+    lv_obj_set_width(po.labels[0], 204);
+    lv_obj_center(po.labels[0]);
 
-    for (int i = 0; i < 5; ++i) {
-        lv_obj_t* row = make_row(root, 24, 6);
+    lv_obj_t* header = make_row(root, 22, 4);
+    lv_obj_t* header_name = make_label(header, &sty_dim16, "吃什么");
+    lv_obj_set_width(header_name, 104);
+    lv_obj_t* header_count = make_label(header, &sty_dim16, "次数");
+    lv_obj_set_width(header_count, 34);
+    lv_obj_set_style_text_align(header_count, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_t* header_price = make_label(header, &sty_dim16, "价格");
+    lv_obj_set_width(header_price, 38);
+    lv_obj_set_style_text_align(header_price, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_t* header_score = make_label(header, &sty_dim16, "评分");
+    lv_obj_set_width(header_score, 32);
+    lv_obj_set_style_text_align(header_score, LV_TEXT_ALIGN_RIGHT, 0);
+
+    // Keep the focus/header fixed and put all candidate rows in a bounded
+    // scroll viewport. Empty rows are hidden by update_what2eat(), so a
+    // release with two items does not leave six blank board rows, while a
+    // release with fifteen items remains reachable by touch scrolling.
+    lv_obj_t* list = lv_obj_create(root);
+    plain(list);
+    lv_obj_set_size(list, 220, 194);
+    lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(list, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_gap(list, 4, 0);
+    lv_obj_add_flag(list, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scrollbar_mode(list, LV_SCROLLBAR_MODE_OFF);
+    po.what2eatList = list;
+
+    for (int i = 0; i < WHAT2EAT_MAX_ITEMS; ++i) {
+        lv_obj_t* row = make_row(list, 28, 4);
         po.rows[i] = row;
-        po.labels[2 + i * 4] = make_label(row, &sty_brand16, " ");
-        lv_obj_set_width(po.labels[2 + i * 4], 14);
-        po.labels[3 + i * 4] = make_label(row, &sty_text16);
-        lv_obj_set_flex_grow(po.labels[3 + i * 4], 1);
+        lv_obj_add_flag(row, LV_OBJ_FLAG_HIDDEN);
+        po.labels[1 + i * 4] = make_label(row, &sty_dynamic16);
+        lv_obj_set_width(po.labels[1 + i * 4], 104);
+        po.labels[2 + i * 4] = make_label(row, &sty_ascii14);
+        lv_obj_set_width(po.labels[2 + i * 4], 34);
+        lv_obj_set_style_text_align(po.labels[2 + i * 4], LV_TEXT_ALIGN_RIGHT, 0);
+        po.labels[3 + i * 4] = make_label(row, &sty_ascii14);
+        lv_obj_set_width(po.labels[3 + i * 4], 38);
+        lv_obj_set_style_text_align(po.labels[3 + i * 4], LV_TEXT_ALIGN_RIGHT, 0);
         po.labels[4 + i * 4] = make_label(row, &sty_ascii14);
         lv_obj_set_width(po.labels[4 + i * 4], 32);
         lv_obj_set_style_text_align(po.labels[4 + i * 4], LV_TEXT_ALIGN_RIGHT, 0);
-        po.labels[5 + i * 4] = make_label(row, &sty_ascii14);
-        lv_obj_set_width(po.labels[5 + i * 4], 38);
-        lv_obj_set_style_text_align(po.labels[5 + i * 4], LV_TEXT_ALIGN_RIGHT, 0);
     }
 
-    po.labels[22] = make_label(root, &sty_dim16, "A pick  B save");
-    lv_obj_set_width(po.labels[22], 220);
-    lv_obj_set_style_text_align(po.labels[22], LV_TEXT_ALIGN_CENTER, 0);
     po.built = true;
 }
 
-static void update_menu(const UiModel& m) {
-    PageObjects& po = page_objects(PAGE_PORTRAIT_MENU);
-    set_text(po.labels[0], m.menu.ask);
-    set_text(po.labels[1], m.menu.lastMeal);
+static void update_what2eat(const UiModel& m) {
+    PageObjects& po = page_objects(PAGE_PORTRAIT_WHAT2EAT);
+    char recommendation[64];
+    snprintf(recommendation, sizeof(recommendation), "今日推荐：%s",
+             m.what2eat.recommendation[0] ? m.what2eat.recommendation : "暂无信息");
+    set_text(po.labels[0], recommendation);
 
-    int row = 0;
-    for (uint8_t g = 0; g < m.menu.groupCount && g < 4 && row < 5; ++g) {
-        const UiMenuGroupProps& grp = m.menu.groups[g];
-        for (uint8_t c = 0; c < grp.candidateCount && c < 6 && row < 5; ++c) {
-            const UiMenuCandidateProps& item = grp.candidates[c];
-            set_text(po.labels[2 + row * 4], item.active ? ">" : " ");
-            set_text(po.labels[3 + row * 4], item.name);
-            set_text(po.labels[4 + row * 4], item.price);
-            char score[12];
-            snprintf(score, sizeof(score), "%u.%u", item.score / 10, item.score % 10);
-            set_text(po.labels[5 + row * 4], score);
+    uint8_t row = 0;
+    int8_t selectedRow = -1;
+    for (uint8_t source = 0;
+         source < m.what2eat.itemCount && source < WHAT2EAT_MAX_ITEMS;
+         ++source) {
+        const UiWhat2EatItemProps& item = m.what2eat.items[source];
+        if (item.name[0] == '\0' || row >= WHAT2EAT_MAX_ITEMS) continue;
+        char count[12];
+        char score[12];
+        snprintf(count, sizeof(count), "%u", (unsigned)item.count);
+        snprintf(score, sizeof(score), "%u.%u", item.score / 10, item.score % 10);
+        set_text(po.labels[1 + row * 4], item.name);
+        set_text(po.labels[2 + row * 4], count);
+        set_text(po.labels[3 + row * 4], item.price);
+        set_text(po.labels[4 + row * 4], score);
 
-            lv_obj_clear_flag(po.rows[row], LV_OBJ_FLAG_HIDDEN);
-            lv_obj_set_style_bg_opa(po.rows[row], item.active ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
-            lv_obj_set_style_bg_color(po.rows[row], lv_color_hex(C_CARD_HI), 0);
-            ++row;
-        }
-    }
-
-    while (row < 5) {
-        lv_obj_add_flag(po.rows[row], LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(po.rows[row], LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_style_bg_opa(po.rows[row], item.selected ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+        lv_obj_set_style_bg_color(po.rows[row], lv_color_hex(C_CARD_HI), 0);
+        if (item.selected) selectedRow = static_cast<int8_t>(row);
         ++row;
     }
 
-    set_text(po.labels[22], "A pick  B save");
+    while (row < WHAT2EAT_MAX_ITEMS) {
+        lv_obj_add_flag(po.rows[row], LV_OBJ_FLAG_HIDDEN);
+        ++row;
+    }
+    if (selectedRow != po.what2eatSelectedRow && selectedRow >= 0 && po.what2eatList) {
+        lv_obj_scroll_to_view(po.rows[selectedRow], LV_ANIM_OFF);
+    }
+    po.what2eatSelectedRow = selectedRow;
 }
 
 static void build_environment() {
@@ -1429,7 +1475,7 @@ static void build_page(UIPage page) {
     switch (page) {
         case PAGE_PORTRAIT_OVERVIEW:    build_overview(); break;
         case PAGE_PORTRAIT_AI_USAGE:    build_ai_usage(); break;
-        case PAGE_PORTRAIT_MENU:        build_menu(); break;
+        case PAGE_PORTRAIT_WHAT2EAT:    build_what2eat(); break;
         case PAGE_PORTRAIT_ENVIRONMENT: build_environment(); break;
         case PAGE_PORTRAIT_SETTINGS:    build_settings(); break;
         case PAGE_SLEEP_FACE_DOWN:      build_face_down(); break;
@@ -1443,7 +1489,7 @@ static UIPage normalized_page(UIPage page) {
     switch (page) {
         case PAGE_PORTRAIT_OVERVIEW:
         case PAGE_PORTRAIT_AI_USAGE:
-        case PAGE_PORTRAIT_MENU:
+        case PAGE_PORTRAIT_WHAT2EAT:
         case PAGE_PORTRAIT_ENVIRONMENT:
         case PAGE_PORTRAIT_SETTINGS:
         case PAGE_SLEEP_FACE_DOWN:
@@ -1471,7 +1517,7 @@ static void update_page(const UiModel& m) {
     switch (normalized_page(m.view.page)) {
         case PAGE_PORTRAIT_OVERVIEW:    update_overview(m); break;
         case PAGE_PORTRAIT_AI_USAGE:    update_ai_usage(m); break;
-        case PAGE_PORTRAIT_MENU:        update_menu(m); break;
+        case PAGE_PORTRAIT_WHAT2EAT:    update_what2eat(m); break;
         case PAGE_PORTRAIT_ENVIRONMENT: update_environment(m); break;
         case PAGE_PORTRAIT_SETTINGS:    update_settings(m); break;
         case PAGE_SLEEP_FACE_DOWN:      update_face_down(m); break;

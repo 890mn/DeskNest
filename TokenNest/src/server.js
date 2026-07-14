@@ -15,13 +15,20 @@ import { tn_create_status_route } from './routes/status.js';
 import { tn_create_usage_route } from './routes/usage.js';
 import { tn_create_health_route } from './routes/health.js';
 import { tn_create_desknest_routes } from './routes/desknest.js';
+import {
+    tn_create_admin_guard,
+    tn_create_what2eat_routes,
+    tn_create_what2eat_store,
+} from './routes/what2eat.js';
 
 const log = tn_logger('main');
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 
 const main = async () => {
-    const config = tn_load_config(path.join(ROOT, 'config', 'tokennest.yaml'));
+    const config = tn_load_config(path.join(ROOT, 'config', 'tokennest.yaml'), {
+        envPath: path.join(ROOT, '.env'),
+    });
     log.info(`config: host=${config.server.host} port=${config.server.port} cacheDir=${config.paths.cacheDir}`);
 
     const chatgptSrc = tn_create_chatgpt_source(config);
@@ -38,30 +45,50 @@ const main = async () => {
         log.debug(`${req.method} ${req.path}`);
         next();
     });
-    app.use((_req, res, next) => {
-        res.set('Access-Control-Allow-Origin', '*');
-        next();
-    });
 
     const getAggregate = () => tn_aggregate({
         cacheDir: config.paths.cacheDir,
         staleThresholdSec: config.staleThresholdSec,
     });
+    const what2eatStore = tn_create_what2eat_store({
+        draftPath: path.join(ROOT, 'config', 'what2eat.draft.json'),
+        publishedPath: path.join(ROOT, 'config', 'what2eat.published.json'),
+        ackPath: path.join(ROOT, 'config', 'what2eat.ack.json'),
+    });
+    const what2eatRoutes = tn_create_what2eat_routes({ store: what2eatStore });
     const deskRoutes = tn_create_desknest_routes({
         configPath: path.join(ROOT, 'config', 'desknest.json'),
         getAggregate,
     });
+    const requireAdmin = tn_create_admin_guard();
 
     app.get('/status.json', tn_create_status_route({ getAggregate, staleThresholdSec: config.staleThresholdSec, sources }));
     app.get('/api/usage', tn_create_usage_route({ getAggregate }));
     app.get('/healthz', tn_create_health_route({ sources, staleThresholdSec: config.staleThresholdSec }));
-    app.get('/api/desknest', deskRoutes.get);
-    app.put('/api/desknest', deskRoutes.put);
+    app.get('/api/desknest', requireAdmin, deskRoutes.get);
+    app.put('/api/desknest', requireAdmin, deskRoutes.put);
+    app.get('/api/what2eat/draft', requireAdmin, what2eatRoutes.getDraft);
+    app.put('/api/what2eat/draft', requireAdmin, what2eatRoutes.putDraft);
+    app.post('/api/what2eat/publish', requireAdmin, what2eatRoutes.publish);
+    // what2eat sync/ack intentionally use no device token. The service is a
+    // local/LAN control plane; admin writes remain protected above.
+    app.get('/api/what2eat/sync', what2eatRoutes.sync);
+    app.post('/api/what2eat/ack', what2eatRoutes.ack);
     app.use('/desk', express.static(path.join(ROOT, 'web')));
     app.get('/', (_req, res) => res.json({
         service: 'TokenNest',
         version: '0.1.0',
-        endpoints: ['/status.json', '/api/usage', '/healthz', '/api/desknest', '/desk'],
+        endpoints: [
+            '/status.json',
+            '/api/usage',
+            '/healthz',
+            '/api/desknest',
+            '/api/what2eat/draft',
+            '/api/what2eat/publish',
+            '/api/what2eat/sync',
+            '/api/what2eat/ack',
+            '/desk',
+        ],
     }));
 
     const server = app.listen(config.server.port, config.server.host, () => {

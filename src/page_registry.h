@@ -29,7 +29,7 @@ struct PageDef {
 static const PageDef DN_PAGE_REGISTRY[] = {
     { PAGE_PORTRAIT_OVERVIEW,    PAGE_GROUP_PORTRAIT,  "DeskNest",    true  },
     { PAGE_PORTRAIT_AI_USAGE,    PAGE_GROUP_PORTRAIT,  "AI Left",     true  },
-    { PAGE_PORTRAIT_MENU,        PAGE_GROUP_PORTRAIT,  "今天吃什么",   true  },
+    { PAGE_PORTRAIT_WHAT2EAT,    PAGE_GROUP_PORTRAIT,  "what2eat",    true  },
     { PAGE_PORTRAIT_SETTINGS,    PAGE_GROUP_PORTRAIT,  "Settings",    true  },
 
     // Reserved for future boot-time landscape initialization mode.

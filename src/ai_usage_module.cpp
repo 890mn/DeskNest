@@ -21,9 +21,11 @@ constexpr const char* kUsagePaths[] = {
 };
 constexpr uint32_t kRefreshIntervalMs = 30000;
 
-static AIUsageParseStorage s_storage;
+static AIUsageParseStorage s_parse_storage[2];
+static uint8_t s_active_parse_storage = 0;
 static AIUsageStatus s_cached;
 static AIWiFiStatus s_wifi_status;
+static AIWiFiStatus s_wifi_working;
 static bool s_loaded_once = false;
 static uint32_t s_last_load_ms = 0;
 static uint32_t s_last_wifi_attempt_ms = 0;
@@ -38,14 +40,64 @@ static uint32_t s_time_base_ms = 0;
 static time_t s_time_base_epoch = 0;
 static SemaphoreHandle_t s_state_mutex = nullptr;
 
+struct PublishedTimeState {
+    bool ready = false;
+    uint32_t baseMs = 0;
+    time_t baseEpoch = 0;
+};
+
+static PublishedTimeState s_published_time;
+
 void ensure_state_mutex() {
     if (!s_state_mutex) s_state_mutex = xSemaphoreCreateMutex();
 }
 
 struct StateLock {
-    StateLock() { ensure_state_mutex(); if (s_state_mutex) xSemaphoreTake(s_state_mutex, portMAX_DELAY); }
-    ~StateLock() { if (s_state_mutex) xSemaphoreGive(s_state_mutex); }
+    explicit StateLock(TickType_t wait_ticks = portMAX_DELAY) {
+        ensure_state_mutex();
+        locked_ = s_state_mutex && xSemaphoreTake(s_state_mutex, wait_ticks) == pdTRUE;
+    }
+    ~StateLock() { if (locked_) xSemaphoreGive(s_state_mutex); }
+    bool locked() const { return locked_; }
+
+private:
+    bool locked_ = false;
 };
+
+constexpr TickType_t kSnapshotLockWaitTicks = pdMS_TO_TICKS(2);
+
+void bind_parsed_storage(AIUsageStatus* status, AIUsageParseStorage* storage) {
+    if (!status || !storage) return;
+    status->updatedAtText = storage->updatedAtText[0] ? storage->updatedAtText : "cached";
+    status->warningText = storage->warningText;
+    status->serverNow = storage->serverNow;
+    status->chatgpt.statusText = storage->chatgptStatus;
+    status->chatgpt.detailText = storage->chatgptDetail;
+    status->chatgpt.fiveHourExpireAt = storage->chatgptFiveHourExpireAt;
+    status->chatgpt.weekExpireAt = storage->chatgptWeekExpireAt;
+    status->minimax.statusText = storage->minimaxStatus;
+    status->minimax.detailText = storage->minimaxDetail;
+    status->minimax.fiveHourExpireAt = storage->minimaxFiveHourExpireAt;
+    status->minimax.weekExpireAt = storage->minimaxWeekExpireAt;
+    for (uint8_t i = 0; i < status->codexResetCount && i < 4; ++i) {
+        status->codexResets[i].name = storage->codexResetNames[i];
+        status->codexResets[i].expireAt = storage->codexResetExpireAts[i];
+    }
+}
+
+void publish_wifi_status() {
+    StateLock lock;
+    if (!lock.locked()) return;
+    s_wifi_status = s_wifi_working;
+}
+
+void publish_time_state() {
+    StateLock lock;
+    if (!lock.locked()) return;
+    s_published_time.ready = s_time_synced;
+    s_published_time.baseMs = s_time_base_ms;
+    s_published_time.baseEpoch = s_time_base_epoch;
+}
 
 constexpr uint32_t kWiFiConnectCooldownMs = 20000;
 constexpr uint32_t kWiFiNoSsidCooldownMs = 45000;
@@ -87,10 +139,10 @@ void refresh_wifi_scan(uint32_t now) {
     s_last_wifi_scan_ms = now;
 
     const int found = WiFi.scanNetworks(false, false, false, 110, 0, DESKNEST_WIFI_SSID);
-    s_wifi_status.ssidVisible = (found > 0);
-    s_wifi_status.rssi = (found > 0) ? (int8_t)WiFi.RSSI(0) : 0;
+    s_wifi_working.ssidVisible = (found > 0);
+    s_wifi_working.rssi = (found > 0) ? (int8_t)WiFi.RSSI(0) : 0;
     Serial.printf("[D][AI][WIFI] scan ssid='%s' found=%d rssi=%d\n",
-                  DESKNEST_WIFI_SSID, found, (int)s_wifi_status.rssi);
+                   DESKNEST_WIFI_SSID, found, (int)s_wifi_working.rssi);
     WiFi.scanDelete();
 }
 
@@ -100,6 +152,7 @@ void apply_server_time_basis(const char* server_now_text) {
     s_time_synced = true;
     s_time_base_epoch = epoch;
     s_time_base_ms = millis();
+    publish_time_state();
 
     struct tm tm_now;
     localtime_r(&epoch, &tm_now);
@@ -135,52 +188,53 @@ void ensure_network_time(uint32_t now) {
     s_time_synced = true;
     s_time_base_epoch = epoch;
     s_time_base_ms = millis();
+    publish_time_state();
     Serial.printf("[D][AI][TIME] synced %04d-%02d-%02d %02d:%02d:%02d\n",
                   tm_now.tm_year + 1900, tm_now.tm_mon + 1, tm_now.tm_mday,
                   tm_now.tm_hour, tm_now.tm_min, tm_now.tm_sec);
 }
 
 bool refresh_wifi_link(uint32_t now, bool request_connect) {
-    s_wifi_status = {};
-    s_wifi_status.configured = wifi_configured();
-    if (!s_wifi_status.configured) {
-        s_wifi_status.state = AI_WIFI_UNCONFIGURED;
+    s_wifi_working = {};
+    s_wifi_working.configured = wifi_configured();
+    if (!s_wifi_working.configured) {
+        s_wifi_working.state = AI_WIFI_UNCONFIGURED;
         return false;
     }
 
     ensure_wifi_station_started();
     wl_status_t st = WiFi.status();
-    s_wifi_status.rawStatus = (uint8_t)st;
+    s_wifi_working.rawStatus = (uint8_t)st;
 
     if (st == WL_CONNECTED) {
-        s_wifi_status.state = AI_WIFI_CONNECTED;
-        s_wifi_status.ssidVisible = true;
-        s_wifi_status.rssi = (int8_t)WiFi.RSSI();
-        s_wifi_status.retryInSec = 0;
+        s_wifi_working.state = AI_WIFI_CONNECTED;
+        s_wifi_working.ssidVisible = true;
+        s_wifi_working.rssi = (int8_t)WiFi.RSSI();
+        s_wifi_working.retryInSec = 0;
         ensure_network_time(now);
         return true;
     }
 
     if (st == WL_NO_SSID_AVAIL) {
-        s_wifi_status.state = AI_WIFI_NO_SSID;
+        s_wifi_working.state = AI_WIFI_NO_SSID;
         refresh_wifi_scan(now);
     } else if (st == WL_CONNECT_FAILED) {
-        s_wifi_status.state = AI_WIFI_AUTH_FAILED;
+        s_wifi_working.state = AI_WIFI_AUTH_FAILED;
     } else if (st == WL_IDLE_STATUS) {
-        s_wifi_status.state = AI_WIFI_CONNECTING;
+        s_wifi_working.state = AI_WIFI_CONNECTING;
     } else {
-        s_wifi_status.state = AI_WIFI_DISCONNECTED;
+        s_wifi_working.state = AI_WIFI_DISCONNECTED;
     }
 
     const uint32_t cooldown = (st == WL_NO_SSID_AVAIL) ? kWiFiNoSsidCooldownMs : kWiFiConnectCooldownMs;
-    s_wifi_status.retryInSec = seconds_until(now, s_last_wifi_attempt_ms, cooldown);
+    s_wifi_working.retryInSec = seconds_until(now, s_last_wifi_attempt_ms, cooldown);
 
     if (!request_connect || !should_retry_connect(now, st)) {
         return false;
     }
 
     s_last_wifi_attempt_ms = now;
-    s_wifi_status.retryInSec = seconds_until(now, s_last_wifi_attempt_ms, cooldown);
+    s_wifi_working.retryInSec = seconds_until(now, s_last_wifi_attempt_ms, cooldown);
     Serial.printf("[D][AI][WIFI] connect ssid='%s' status=%d\n", DESKNEST_WIFI_SSID, (int)st);
     WiFi.disconnect(false, false);
     WiFi.begin(DESKNEST_WIFI_SSID, DESKNEST_WIFI_PASS);
@@ -192,29 +246,29 @@ bool refresh_wifi_link(uint32_t now, bool request_connect) {
         cur = WiFi.status();
     }
 
-    s_wifi_status.rawStatus = (uint8_t)cur;
+    s_wifi_working.rawStatus = (uint8_t)cur;
     if (cur == WL_CONNECTED) {
-        s_wifi_status.state = AI_WIFI_CONNECTED;
-        s_wifi_status.ssidVisible = true;
-        s_wifi_status.rssi = (int8_t)WiFi.RSSI();
-        s_wifi_status.retryInSec = 0;
+        s_wifi_working.state = AI_WIFI_CONNECTED;
+        s_wifi_working.ssidVisible = true;
+        s_wifi_working.rssi = (int8_t)WiFi.RSSI();
+        s_wifi_working.retryInSec = 0;
         ensure_network_time(now);
         Serial.printf("[D][AI][WIFI] connected ip=%s rssi=%d\n",
-                      WiFi.localIP().toString().c_str(), (int)s_wifi_status.rssi);
+                           WiFi.localIP().toString().c_str(), (int)s_wifi_working.rssi);
         return true;
     }
 
     if (cur == WL_NO_SSID_AVAIL) {
-        s_wifi_status.state = AI_WIFI_NO_SSID;
+        s_wifi_working.state = AI_WIFI_NO_SSID;
         refresh_wifi_scan(now);
     } else if (cur == WL_CONNECT_FAILED) {
-        s_wifi_status.state = AI_WIFI_AUTH_FAILED;
+        s_wifi_working.state = AI_WIFI_AUTH_FAILED;
     } else {
-        s_wifi_status.state = AI_WIFI_CONNECTING;
+        s_wifi_working.state = AI_WIFI_CONNECTING;
     }
-    s_wifi_status.retryInSec = seconds_until(now, s_last_wifi_attempt_ms, cooldown);
+    s_wifi_working.retryInSec = seconds_until(now, s_last_wifi_attempt_ms, cooldown);
     Serial.printf("[D][AI][WIFI] pending/fail status=%d retry=%us visible=%d\n",
-                  (int)cur, (unsigned)s_wifi_status.retryInSec, s_wifi_status.ssidVisible ? 1 : 0);
+                   (int)cur, (unsigned)s_wifi_working.retryInSec, s_wifi_working.ssidVisible ? 1 : 0);
     return false;
 }
 
@@ -222,8 +276,8 @@ bool ensure_wifi(uint32_t now) {
     return refresh_wifi_link(now, true);
 }
 
-bool fetch_tokennest_status(AIUsageStatus* out, uint32_t now) {
-    if (!out) return false;
+bool fetch_tokennest_status(AIUsageStatus* out, AIUsageParseStorage* storage, uint32_t now) {
+    if (!out || !storage) return false;
     if (!tokennest_configured()) {
         Serial.println("[D][AI][HTTP] skip: TokenNest URL not configured");
         return false;
@@ -233,7 +287,7 @@ bool fetch_tokennest_status(AIUsageStatus* out, uint32_t now) {
     static char json[1536];
     HTTPClient http;
     http.setTimeout(2500);
-    Serial.printf("[D][AI][HTTP] GET %s\n", DESKNEST_TOKENNEST_STATUS_URL);
+    Serial.println("[D][AI][HTTP] GET configured status endpoint");
     if (!http.begin(DESKNEST_TOKENNEST_STATUS_URL)) {
         Serial.println("[D][AI][HTTP] begin failed");
         return false;
@@ -255,7 +309,7 @@ bool fetch_tokennest_status(AIUsageStatus* out, uint32_t now) {
         Serial.println("[D][AI][HTTP] empty body");
         return false;
     }
-    const bool parsed = dn_ai_usage_parse_cc_switch_status(json, &s_storage, out);
+    const bool parsed = dn_ai_usage_parse_cc_switch_status(json, storage, out);
     if (parsed) {
         out->fromCache = false;
         apply_server_time_basis(out->serverNow);
@@ -270,20 +324,31 @@ bool fetch_tokennest_status(AIUsageStatus* out, uint32_t now) {
 } // namespace
 
 AIUsageStatus dn_ai_usage_status() {
-    StateLock lock;
+    static AIUsageParseStorage fallback_storage;
+    static AIUsageStatus fallback = dn_ai_usage_demo_status();
+    StateLock lock(kSnapshotLockWaitTicks);
+    if (!lock.locked()) return fallback;
     const uint32_t now = millis();
     const uint32_t refresh_ms = s_data_ready ? kRefreshIntervalMs : kBootstrapRetryMs;
     AIUsageStatus current = s_cached;
+    if (s_live_data_ready) {
+        fallback_storage = s_parse_storage[s_active_parse_storage];
+        bind_parsed_storage(&current, &fallback_storage);
+    }
     const uint32_t elapsed = now >= s_last_load_ms ? now - s_last_load_ms : 0;
     current.nextRefreshInSec = elapsed >= refresh_ms
         ? 0
         : (uint16_t)((refresh_ms - elapsed + 999) / 1000);
-    return current;
+    fallback = current;
+    return fallback;
 }
 
 AIWiFiStatus dn_ai_usage_wifi_status() {
-    StateLock lock;
-    return s_wifi_status;
+    static AIWiFiStatus fallback;
+    StateLock lock(kSnapshotLockWaitTicks);
+    if (!lock.locked()) return fallback;
+    fallback = s_wifi_status;
+    return fallback;
 }
 
 void dn_ai_usage_service_begin() {
@@ -291,43 +356,76 @@ void dn_ai_usage_service_begin() {
     const uint32_t now = millis();
     ensure_wifi_station_started();
     refresh_wifi_link(now, true);
+    publish_wifi_status();
 }
 
 void dn_ai_usage_service_tick() {
-    StateLock lock;
+    // Network calls can block for seconds. Keep them entirely outside the
+    // snapshot mutex so the main loop can continue sampling input and pumping
+    // LVGL; only the small state copies below take StateLock.
     const uint32_t now = millis();
     refresh_wifi_link(now, true);
-    const uint32_t refresh_ms = s_data_ready ? kRefreshIntervalMs : kBootstrapRetryMs;
-    if (!s_loaded_once || now - s_last_load_ms >= refresh_ms) {
+    publish_wifi_status();
+
+    bool loaded_once = false;
+    bool data_ready = false;
+    uint32_t last_load_ms = 0;
+    uint8_t next_storage = 0;
+    {
+        StateLock lock;
+        if (lock.locked()) {
+            loaded_once = s_loaded_once;
+            data_ready = s_data_ready;
+            last_load_ms = s_last_load_ms;
+            next_storage = (uint8_t)(s_active_parse_storage ^ 1U);
+        }
+    }
+
+    const uint32_t refresh_ms = data_ready ? kRefreshIntervalMs : kBootstrapRetryMs;
+    if (!loaded_once || now - last_load_ms >= refresh_ms) {
         AIUsageStatus parsed;
         Serial.printf("[D][AI] refresh start loaded=%d age=%lums\n",
-                      s_loaded_once ? 1 : 0,
-                      (unsigned long)(s_loaded_once ? now - s_last_load_ms : 0));
-        if (fetch_tokennest_status(&parsed, now)) {
-            s_cached = parsed;
-            s_data_ready = true;
-            s_live_data_ready = true;
+                      loaded_once ? 1 : 0,
+                      (unsigned long)(loaded_once ? now - last_load_ms : 0));
+        const bool fetched = fetch_tokennest_status(
+            &parsed, &s_parse_storage[next_storage], now);
+        publish_wifi_status();
+        {
+            StateLock lock;
+            if (lock.locked()) {
+                if (fetched) {
+                    s_cached = parsed;
+                    s_active_parse_storage = next_storage;
+                    s_data_ready = true;
+                    s_live_data_ready = true;
+                } else if (!loaded_once) {
+                    s_cached = dn_ai_usage_demo_status();
+                    s_data_ready = false;
+                    s_live_data_ready = false;
+                }
+                s_loaded_once = true;
+                s_last_load_ms = now;
+            }
+        }
+        if (fetched) {
             Serial.println("[D][AI] source=http");
-        } else if (!s_loaded_once) {
-            s_cached = dn_ai_usage_demo_status();
-            s_data_ready = false;
-            s_live_data_ready = false;
+        } else if (!loaded_once) {
             Serial.println("[D][AI] source=demo");
         } else {
             Serial.println("[D][AI] source=previous");
         }
-        s_loaded_once = true;
-        s_last_load_ms = now;
     }
 }
 
 const char* dn_ai_usage_time_text() {
-    StateLock lock;
     static char s_time_text[8] = "";
-    if (!s_time_synced || s_time_base_epoch <= 0) return "";
+    StateLock lock(kSnapshotLockWaitTicks);
+    if (!lock.locked()) return s_time_text;
+    if (!s_published_time.ready || s_published_time.baseEpoch <= 0) return "";
 
     const uint32_t now_ms = millis();
-    const time_t epoch = s_time_base_epoch + (time_t)((now_ms - s_time_base_ms) / 1000UL);
+    const time_t epoch = s_published_time.baseEpoch
+        + (time_t)((now_ms - s_published_time.baseMs) / 1000UL);
     struct tm tm_now;
 #if defined(_POSIX_THREAD_SAFE_FUNCTIONS) || !defined(UNIT_TEST)
     localtime_r(&epoch, &tm_now);
@@ -339,24 +437,29 @@ const char* dn_ai_usage_time_text() {
 }
 
 time_t dn_ai_usage_now_epoch() {
-    StateLock lock;
-    if (!s_time_synced || s_time_base_epoch <= 0) return 0;
+    StateLock lock(kSnapshotLockWaitTicks);
+    if (!lock.locked()) return 0;
+    if (!s_published_time.ready || s_published_time.baseEpoch <= 0) return 0;
     const uint32_t now_ms = millis();
-    return s_time_base_epoch + (time_t)((now_ms - s_time_base_ms) / 1000UL);
+    return s_published_time.baseEpoch
+        + (time_t)((now_ms - s_published_time.baseMs) / 1000UL);
 }
 
 bool dn_ai_usage_time_ready() {
-    StateLock lock;
-    return s_time_synced && s_time_base_epoch > 0;
+    StateLock lock(kSnapshotLockWaitTicks);
+    if (!lock.locked()) return false;
+    return s_published_time.ready && s_published_time.baseEpoch > 0;
 }
 
 bool dn_ai_usage_data_ready() {
-    StateLock lock;
+    StateLock lock(kSnapshotLockWaitTicks);
+    if (!lock.locked()) return false;
     return s_data_ready;
 }
 
 bool dn_ai_usage_live_data_ready() {
-    StateLock lock;
+    StateLock lock(kSnapshotLockWaitTicks);
+    if (!lock.locked()) return false;
     return s_live_data_ready;
 }
 
