@@ -47,12 +47,25 @@ static constexpr uint32_t C_MINIMAX   = 0xB49ACF;
 static constexpr uint32_t C_ALERT     = 0xC97C7C;
 static constexpr uint32_t C_BOOT      = 0xE16811;
 
+// Boot footer geometry: the logo anchors the progress rail from the left.
+constexpr int BOOT_PANEL_X = 10;
+constexpr int BOOT_TEXT_X = 22;
+constexpr int BOOT_TEXT_GAP = 10;
+constexpr int BOOT_SLOGAN_W = 176;
+constexpr int BOOT_LOGO_SIZE = 40;
+constexpr int BOOT_RAIL_X = BOOT_PANEL_X + BOOT_TEXT_X;
+constexpr int BOOT_RAIL_Y = 205;
+constexpr int BOOT_SLOGAN_RIGHT = BOOT_PANEL_X + BOOT_TEXT_X + BOOT_SLOGAN_W;
+constexpr int BOOT_RAIL_W = BOOT_SLOGAN_RIGHT - BOOT_RAIL_X;
+constexpr int BOOT_RAIL_H = 8;
+
 static lv_style_t sty_plain;
 static lv_style_t sty_card;
 static lv_style_t sty_text24;
 static lv_style_t sty_advice24;
 static lv_style_t sty_text16;
 static lv_style_t sty_ascii14;
+static lv_style_t sty_ascii16;
 static lv_style_t sty_label16;
 static lv_style_t sty_dim16;
 static lv_style_t sty_brand16;
@@ -96,10 +109,11 @@ struct PageObjects {
 struct BootOverlayObjects {
     lv_obj_t* root = nullptr;
     lv_obj_t* panel = nullptr;
+    lv_obj_t* brand_row = nullptr;
+    lv_obj_t* brand_copy = nullptr;
     lv_obj_t* logo = nullptr;
     lv_obj_t* title = nullptr;
     lv_obj_t* name = nullptr;
-    lv_obj_t* subtitle = nullptr;
     lv_obj_t* tagline = nullptr;
     lv_obj_t* progress_track = nullptr;
     lv_obj_t* progress_fill = nullptr;
@@ -153,6 +167,10 @@ static const lv_font_t* font_ascii_body_bold() {
     return &lv_font_14_bold;
 }
 
+static const lv_font_t* font_ascii_title() {
+    return &lv_font_16_bold;
+}
+
 static const lv_font_t* font_symbol() {
     return &lv_font_14;
 }
@@ -190,6 +208,10 @@ static void style_init_once() {
     lv_style_init(&sty_ascii14);
     lv_style_set_text_color(&sty_ascii14, lv_color_hex(C_TEXT));
     lv_style_set_text_font(&sty_ascii14, font_ascii_body());
+
+    lv_style_init(&sty_ascii16);
+    lv_style_set_text_color(&sty_ascii16, lv_color_hex(C_TEXT));
+    lv_style_set_text_font(&sty_ascii16, font_ascii_title());
 
     lv_style_init(&sty_label16);
     lv_style_set_text_color(&sty_label16, lv_color_hex(C_LABEL));
@@ -671,6 +693,11 @@ static void chrome_update(const UiModel& m) {
 static void boot_overlay_build() {
     if (s_boot.root) return;
 
+    const lv_coord_t brand_height = font_cn_title()->line_height
+                                    + BOOT_TEXT_GAP
+                                    + font_ascii_title()->line_height;
+    const lv_coord_t brand_text_width = BOOT_SLOGAN_W - BOOT_TEXT_GAP - BOOT_LOGO_SIZE;
+
     s_boot.root = lv_obj_create(s_scr);
     plain(s_boot.root);
     lv_obj_set_size(s_boot.root, SCREEN_W, SCREEN_H);
@@ -682,50 +709,68 @@ static void boot_overlay_build() {
     s_boot.panel = lv_obj_create(s_boot.root);
     plain(s_boot.panel);
     lv_obj_set_size(s_boot.panel, 220, 170);
-    lv_obj_set_pos(s_boot.panel, 10, 58);
-    lv_obj_add_style(s_boot.panel, &sty_card, 0);
-    lv_obj_set_style_pad_all(s_boot.panel, 12, 0);
+    lv_obj_set_pos(s_boot.panel, BOOT_PANEL_X, 58);
+    // Keep the panel as a transparent text canvas; Boot has no card frame.
+    lv_obj_set_flex_flow(s_boot.panel, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(s_boot.panel,
+                          LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_START,
+                          LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_left(s_boot.panel, BOOT_TEXT_X, 0);
+    lv_obj_set_style_pad_row(s_boot.panel, BOOT_TEXT_GAP, 0);
 
-    s_boot.logo = lv_img_create(s_boot.panel);
+    s_boot.brand_row = lv_obj_create(s_boot.panel);
+    plain(s_boot.brand_row);
+    lv_obj_set_size(s_boot.brand_row, BOOT_SLOGAN_W, brand_height);
+    lv_obj_set_flex_flow(s_boot.brand_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(s_boot.brand_row,
+                          LV_FLEX_ALIGN_START,
+                          LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(s_boot.brand_row, BOOT_TEXT_GAP, 0);
+
+    s_boot.brand_copy = lv_obj_create(s_boot.brand_row);
+    plain(s_boot.brand_copy);
+    lv_obj_set_size(s_boot.brand_copy, brand_text_width, brand_height);
+    lv_obj_set_flex_flow(s_boot.brand_copy, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(s_boot.brand_copy,
+                          LV_FLEX_ALIGN_START,
+                          LV_FLEX_ALIGN_START,
+                          LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_row(s_boot.brand_copy, BOOT_TEXT_GAP, 0);
+
+    s_boot.title = make_label(s_boot.brand_copy, &sty_text24, "栖屏");
+    lv_obj_set_width(s_boot.title, brand_text_width);
+    lv_obj_set_style_text_align(s_boot.title, LV_TEXT_ALIGN_LEFT, 0);
+
+    s_boot.name = make_label(s_boot.brand_copy, &sty_ascii16, "DeskNest");
+    lv_obj_set_width(s_boot.name, brand_text_width);
+    lv_obj_set_style_text_align(s_boot.name, LV_TEXT_ALIGN_LEFT, 0);
+
+    s_boot.logo = lv_img_create(s_boot.brand_row);
     lv_img_set_src(s_boot.logo, &dn_img_dfrobot_40);
-    lv_obj_set_pos(s_boot.logo, 12, 16);
     lv_obj_set_style_img_recolor(s_boot.logo, lv_color_hex(C_BOOT), 0);
     lv_obj_set_style_img_recolor_opa(s_boot.logo, LV_OPA_COVER, 0);
 
-    s_boot.title = make_label(s_boot.panel, &sty_text24, "栖屏");
-    lv_obj_set_pos(s_boot.title, 64, 16);
-    lv_obj_set_width(s_boot.title, 132);
-    lv_obj_set_style_text_align(s_boot.title, LV_TEXT_ALIGN_LEFT, 0);
-
-    s_boot.name = make_label(s_boot.panel, &sty_text24, "DeskNest");
-    lv_obj_set_pos(s_boot.name, 64, 42);
-    lv_obj_set_width(s_boot.name, 132);
-
-    s_boot.subtitle = make_label(s_boot.panel, &sty_text16, "栖于桌面");
-    lv_obj_set_pos(s_boot.subtitle, 64, 78);
-    lv_obj_set_width(s_boot.subtitle, 132);
-
-    s_boot.tagline = make_label(s_boot.panel, &sty_text16, "息于常亮之间");
-    lv_obj_set_pos(s_boot.tagline, 12, 122);
-    lv_obj_set_width(s_boot.tagline, 196);
+    s_boot.tagline = make_label(s_boot.panel, &sty_text16, "栖于桌面，息于常亮之间");
+    lv_obj_set_width(s_boot.tagline, BOOT_SLOGAN_W);
+    lv_obj_set_style_text_align(s_boot.tagline, LV_TEXT_ALIGN_LEFT, 0);
     lv_obj_set_style_text_color(s_boot.tagline, lv_color_hex(C_LABEL), 0);
-    // Boot copy is deliberately ASCII-only: it remains legible before the
-    // complete CJK font path and network-backed model have both settled.
-    set_text(s_boot.title, "DESKNEST");
-    set_text(s_boot.name, "K10");
-    set_text(s_boot.subtitle, "Desk companion");
-    set_text(s_boot.tagline, "Getting ready");
+    // The original 40px logo is centered on the two-row brand block and ends at the slogan's right edge.
+    set_text(s_boot.title, "栖屏");
+    set_text(s_boot.name, "DeskNest");
+    set_text(s_boot.tagline, "栖于桌面，息于常亮之间");
 
     s_boot.progress_track = lv_obj_create(s_boot.root);
     lv_obj_remove_style_all(s_boot.progress_track);
-    lv_obj_set_size(s_boot.progress_track, 196, 8);
-    lv_obj_set_pos(s_boot.progress_track, 22, 264);
+    lv_obj_set_size(s_boot.progress_track, BOOT_RAIL_W, BOOT_RAIL_H);
+    lv_obj_set_pos(s_boot.progress_track, BOOT_RAIL_X, BOOT_RAIL_Y);
     lv_obj_add_style(s_boot.progress_track, &sty_bar_track, 0);
 
     s_boot.progress_fill = lv_obj_create(s_boot.progress_track);
     lv_obj_remove_style_all(s_boot.progress_fill);
     lv_obj_set_pos(s_boot.progress_fill, 0, 0);
-    lv_obj_set_size(s_boot.progress_fill, 0, 8);
+    lv_obj_set_size(s_boot.progress_fill, 0, BOOT_RAIL_H);
     lv_obj_set_style_bg_opa(s_boot.progress_fill, LV_OPA_COVER, 0);
     lv_obj_set_style_bg_color(s_boot.progress_fill, lv_color_hex(C_BOOT), 0);
     lv_obj_set_style_border_width(s_boot.progress_fill, 0, 0);
@@ -741,7 +786,7 @@ static void boot_overlay_build() {
     lv_obj_set_style_bg_opa(s_boot.progress_head, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(s_boot.progress_head, 0, 0);
     lv_obj_set_style_pad_all(s_boot.progress_head, 0, 0);
-    lv_obj_set_pos(s_boot.progress_head, 10, 258);
+    lv_obj_set_pos(s_boot.progress_head, BOOT_RAIL_X, BOOT_RAIL_Y - 6);
 
     s_boot.progress_label = make_label(s_boot.progress_head, &sty_ascii14, "K10");
     lv_obj_center(s_boot.progress_label);
@@ -756,7 +801,6 @@ static void set_boot_overlay_opa(uint8_t opa) {
     lv_obj_set_style_img_opa(s_boot.logo, opa, 0);
     lv_obj_set_style_text_opa(s_boot.title, opa, 0);
     lv_obj_set_style_text_opa(s_boot.name, opa, 0);
-    lv_obj_set_style_text_opa(s_boot.subtitle, opa, 0);
     lv_obj_set_style_text_opa(s_boot.tagline, opa, 0);
     lv_obj_set_style_bg_opa(s_boot.progress_track, opa, 0);
     lv_obj_set_style_bg_opa(s_boot.progress_fill, opa, 0);
@@ -775,18 +819,23 @@ static void boot_overlay_update(const UiModel& m) {
     lv_obj_clear_flag(s_boot.root, LV_OBJ_FLAG_HIDDEN);
     const uint8_t opa = (uint8_t)(255 - ((uint16_t)m.boot.fadePct * 255U) / 100U);
     set_boot_overlay_opa(opa);
+    const int track_x = lv_obj_get_x(s_boot.progress_track);
+    const int track_y = lv_obj_get_y(s_boot.progress_track);
     const int track_w = lv_obj_get_width(s_boot.progress_track);
+    const int track_h = lv_obj_get_height(s_boot.progress_track);
     const int head_w = lv_obj_get_width(s_boot.progress_head);
+    const int head_h = lv_obj_get_height(s_boot.progress_head);
     int pct = m.boot.progressPct;
     if (pct < 0) pct = 0;
     if (pct > 100) pct = 100;
     lv_obj_set_width(s_boot.progress_fill, (track_w * pct) / 100);
-    const int min_x = 10;
-    const int max_x = 10 + track_w - head_w + 12;
+    const int min_x = track_x;
+    const int max_x = track_x + track_w - head_w;
     int head_x = min_x + ((max_x - min_x) * pct) / 100;
     if (head_x < min_x) head_x = min_x;
     if (head_x > max_x) head_x = max_x;
-    lv_obj_set_pos(s_boot.progress_head, head_x, 258);
+    const int head_y = track_y - (head_h - track_h) / 2;
+    lv_obj_set_pos(s_boot.progress_head, head_x, head_y);
 }
 
 static void hide_all_pages() {
