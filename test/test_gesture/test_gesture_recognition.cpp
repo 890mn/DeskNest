@@ -7,7 +7,7 @@
 //
 //   旋转：|ax|>0.7g ∧ |ay|<0.3g → LANDSCAPE；稳定 400ms 才 commit；冷却 1000ms
 //   翻面：az > +0.7g 持续 800ms → FACE_DOWN；冷却 2000ms
-//   翻回：az < -0.7g 持续 300ms → FACE_UP_OPEN；冷却 2000ms
+//   离开翻面：已 FACE_DOWN 后 az < +0.6g 持续 300ms → FACE_UP_OPEN
 //   摇动：|a| 峰值 > 1.5g（200ms 窗口）→ SHAKE；冷却 600ms
 //   Tap ：gz spike > 1.2g（prev_gz<1.1）→ TAP；冷却 300ms
 //   滞回：中间地带（任一轴都不破阈值）保持当前 orientation
@@ -479,7 +479,7 @@ void test_gesture_face_down_single_trigger_while_held() {
 }
 
 // ===========================================================================
-// 9) 翻回打开：az < -0.7 持续 300ms → FACE_UP_OPEN
+// 9) 离开 face-down：竖直手持 az≈0 持续 300ms → FACE_UP_OPEN
 // ===========================================================================
 void test_gesture_face_up_open() {
     GestureEngine g;
@@ -495,16 +495,67 @@ void test_gesture_face_up_open() {
     }
     TEST_ASSERT_TRUE(down);
 
-    // 翻回。
-    // 留 100 个迭代：滑动窗口从 0.95 过渡到 -0.95 吃掉 ~8 个，
-    // 之后要等 2000ms 翻面冷却 + 300ms 稳定 = ~70 个 @ 33ms。
-    bool up = false;
-    for (int i = 0; i < 100; ++i) {
-        GestureEvent e = g.update(accel(0.0f, 0.0f, -0.95f), g_mock_millis);
+    // 竖直拿起。滑动窗口从 0.95 过渡到 0 吃掉若干采样，之后稳定 300ms。
+    int wakes = 0;
+    for (int i = 0; i < 80; ++i) {
+        GestureEvent e = g.update(accel(0.0f, 1.0f, 0.0f), g_mock_millis);
         g_mock_millis += 33;
-        if (e == GESTURE_FACE_UP_OPEN) { up = true; break; }
+        if (e == GESTURE_FACE_UP_OPEN) wakes++;
     }
-    TEST_ASSERT_TRUE_MESSAGE(up, "FACE_UP_OPEN not fired with az=-0.95g for >300ms");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, wakes,
+                                  "leaving face-down did not emit exactly one wake");
+}
+
+void test_gesture_non_face_down_at_start_does_not_emit_wake() {
+    GestureEngine g;
+    g.begin();
+    int wakes = 0;
+    for (int i = 0; i < 100; ++i) {
+        if (g.update(accel(0.0f, 1.0f, 0.0f), g_mock_millis) == GESTURE_FACE_UP_OPEN) wakes++;
+        g_mock_millis += 33;
+    }
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wakes, "startup handheld pose emitted a spurious wake");
+}
+
+void test_gesture_face_down_hysteresis_holds_until_release_threshold() {
+    GestureEngine g;
+    g.begin();
+    feedSettle(g, 0.0f, 1.0f, 0.0f);
+
+    bool down = false;
+    for (int i = 0; i < 60; ++i) {
+        if (g.update(accel(0.0f, 0.0f, 0.95f), g_mock_millis) == GESTURE_FACE_DOWN) down = true;
+        g_mock_millis += 33;
+    }
+    TEST_ASSERT_TRUE(down);
+
+    int wakes = 0;
+    for (int i = 0; i < 40; ++i) {
+        if (g.update(accel(0.0f, 0.0f, 0.65f), g_mock_millis) == GESTURE_FACE_UP_OPEN) wakes++;
+        g_mock_millis += 33;
+    }
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wakes, "hysteresis band released face-down");
+}
+
+void test_gesture_face_down_can_reenter_after_wake() {
+    GestureEngine g;
+    g.begin();
+    feedSettle(g, 0.0f, 1.0f, 0.0f);
+
+    int downs = 0;
+    for (int i = 0; i < 60; ++i) {
+        if (g.update(accel(0.0f, 0.0f, 0.95f), g_mock_millis) == GESTURE_FACE_DOWN) downs++;
+        g_mock_millis += 33;
+    }
+    for (int i = 0; i < 40; ++i) {
+        g.update(accel(0.0f, 1.0f, 0.0f), g_mock_millis);
+        g_mock_millis += 33;
+    }
+    for (int i = 0; i < 70; ++i) {
+        if (g.update(accel(0.0f, 0.0f, 0.95f), g_mock_millis) == GESTURE_FACE_DOWN) downs++;
+        g_mock_millis += 33;
+    }
+    TEST_ASSERT_EQUAL_INT_MESSAGE(2, downs, "face-down did not re-arm after wake");
 }
 
 // ===========================================================================
@@ -822,6 +873,9 @@ int main(int /*argc*/, char** /*argv*/) {
     RUN_TEST(test_gesture_face_down_roost);
     RUN_TEST(test_gesture_face_down_single_trigger_while_held);
     RUN_TEST(test_gesture_face_up_open);
+    RUN_TEST(test_gesture_non_face_down_at_start_does_not_emit_wake);
+    RUN_TEST(test_gesture_face_down_hysteresis_holds_until_release_threshold);
+    RUN_TEST(test_gesture_face_down_can_reenter_after_wake);
     RUN_TEST(test_gesture_orientation_holds_in_dead_zone);
     RUN_TEST(test_gesture_tap_on_z_spike);
     RUN_TEST(test_gesture_invalid_sample_returns_none);

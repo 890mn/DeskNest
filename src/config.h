@@ -213,10 +213,11 @@ namespace defaults {
     constexpr uint16_t T_FACE_UP_STABLE_MS      = 300;
     constexpr uint16_t T_SHAKE_COOLDOWN_MS      = 450;
     constexpr float    G_ROTATE_THRESHOLD       = 0.7f;
-    // K10 实测：设备正面朝桌放（翻面）时 Z ≈ +0.92g；正面朝上时 Z ≈ -0.92g
-    // 因此 face-down 阈值用 +0.7、face-up 用 -0.7（与初版相反）
+    // K10 实测：设备正面朝桌放（翻面）时 Z ≈ +0.92g。
+    // +0.7 进入 face-down，低于 +0.6 则认为已经离开；中间 0.1g 是滞回带。
+    // face_up 字段名为兼容现有串口 REPL 保留，语义是 face-down release。
     constexpr float    G_FACE_DOWN_THRESHOLD    =  0.7f;
-    constexpr float    G_FACE_UP_THRESHOLD      = -0.7f;
+    constexpr float    G_FACE_UP_THRESHOLD      =  0.6f;
       constexpr float    G_SHAKE_THRESHOLD        = 0.30f;
 
     // 告警阈值

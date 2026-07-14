@@ -18,8 +18,8 @@ GestureEngine g_gesture;
 // ---------------------------------------------------------------------------
 GestureTuning g_tuning = {
     // 翻面
-    .face_down_threshold = defaults::G_FACE_DOWN_THRESHOLD,   // +0.7
-    .face_up_threshold   = defaults::G_FACE_UP_THRESHOLD,     // -0.7
+    .face_down_threshold = defaults::G_FACE_DOWN_THRESHOLD,   // +0.7 enter
+    .face_up_threshold   = defaults::G_FACE_UP_THRESHOLD,     // +0.6 release
     .face_down_stable_ms = defaults::T_FACE_DOWN_STABLE_MS,   // 800
     .face_up_stable_ms   = defaults::T_FACE_UP_STABLE_MS,     // 300
     .face_cooldown_ms    = 2000,
@@ -66,7 +66,8 @@ void GestureEngine::begin() {
     _face_down_since_ms   = 0;
     _face_up_since_ms     = 0;
     _face_down_armed      = true;
-    _face_up_armed        = true;
+    _face_up_armed        = false;
+    _face_down_active     = false;
     _tap_prev_gz          = 1.0f;
 
     _shake_phase          = SHAKE_PHASE_IDLE;
@@ -259,41 +260,48 @@ GestureEvent GestureEngine::update(const AccelReading& acc, uint32_t now_ms) {
     const float az = _wz.avg();
     const float a_mag = sqrtf(ax*ax + ay*ay + az*az);
 
-    // 2) 翻面检测（az > face_down_threshold 持续 face_down_stable_ms）
-    if (az > g_tuning.face_down_threshold) {
-        // 累计时间
-        if (_face_down_armed && _face_down_since_ms == 0) {
-            _face_down_since_ms = now_ms;
-        }
-        if (_face_down_armed && (now_ms - _face_down_since_ms) >= g_tuning.face_down_stable_ms) {
-            if (now_ms - _last_face_ms >= g_tuning.face_cooldown_ms) {
+    // 2) face-down 是二态判定：只有正面朝桌的 +Z 极值进入；一旦进入，
+    // 竖直手持、倾斜或正面朝上都属于离开 face-down，并触发一次唤醒。
+    if (!_face_down_active) {
+        _face_up_since_ms = 0;
+        if (az > g_tuning.face_down_threshold) {
+            if (_face_down_armed && _face_down_since_ms == 0) {
+                _face_down_since_ms = now_ms;
+            }
+            if (_face_down_armed &&
+                (now_ms - _face_down_since_ms) >= g_tuning.face_down_stable_ms &&
+                (now_ms - _last_face_ms) >= g_tuning.face_cooldown_ms) {
                 _last_face_ms = now_ms;
                 _face_down_since_ms = 0;
                 _face_down_armed = false;
+                _face_up_armed = true;
+                _face_down_active = true;
                 return GESTURE_FACE_DOWN;
             }
-        }
-    } else if (az < g_tuning.face_up_threshold) {
-        // 翻回
-        if (_face_up_armed && _face_up_since_ms == 0) {
-            _face_up_since_ms = now_ms;
-        }
-        if (_face_up_armed && (now_ms - _face_up_since_ms) >= g_tuning.face_up_stable_ms) {
-            if (now_ms - _last_face_ms >= g_tuning.face_cooldown_ms) {
-                _last_face_ms = now_ms;
-                _face_up_since_ms = 0;
-                _face_up_armed = false;
-                return GESTURE_FACE_UP_OPEN;
-            }
+        } else {
+            // 稳定时间必须连续；离开进入区后重新计时。
+            _face_down_since_ms = 0;
+            _face_down_armed = true;
         }
     } else {
-        // 中性区：不重置 face_down/face_up 计时器 —— 它们各自的 if 分支
-        // 会在 fire 时清零。这里留空。
+        _face_down_since_ms = 0;
+        if (az < g_tuning.face_up_threshold) {
+            if (_face_up_armed && _face_up_since_ms == 0) {
+                _face_up_since_ms = now_ms;
+            }
+            if (_face_up_armed &&
+                (now_ms - _face_up_since_ms) >= g_tuning.face_up_stable_ms) {
+                _face_up_since_ms = 0;
+                _face_up_armed = false;
+                _face_down_active = false;
+                _face_down_armed = true;
+                return GESTURE_FACE_UP_OPEN;
+            }
+        } else {
+            // 0.6g~0.7g 滞回带及 face-down 区都保持睡眠；离开区需连续稳定。
+            _face_up_since_ms = 0;
+        }
     }
-    // Re-arm only after leaving each extreme zone; cooldown alone must not
-    // cause a held pose to emit repeated events.
-    if (az <= g_tuning.face_down_threshold) _face_down_armed = true;
-    if (az >= g_tuning.face_up_threshold) _face_up_armed = true;
 
     // 3) 旋转检测（X/Y 主轴，滞回 rotate_stable_ms）
     const OrientationState new_orient = classifyOrientation_(ax, ay);

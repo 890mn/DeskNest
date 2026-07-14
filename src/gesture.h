@@ -94,11 +94,11 @@ private:
 
 struct GestureTuning {
     // 翻面
-    float    face_down_threshold;     // az >  此值算"面朝下"
-    float    face_up_threshold;       // az <  此值算"面朝上"
+    float    face_down_threshold;     // az > 此值稳定后进入 face-down
+    float    face_up_threshold;       // az < 此值稳定后离开 face-down（字段名兼容 REPL）
     uint16_t face_down_stable_ms;     // 持续时间（默认 800ms）
     uint16_t face_up_stable_ms;       // 持续时间（默认 300ms）
-    uint16_t face_cooldown_ms;        // 两次翻面事件最小间隔（默认 2000ms）
+    uint16_t face_cooldown_ms;        // 两次进入 face-down 的最小间隔（默认 2000ms）
 
     // 旋转
     float    rotate_threshold;        // 主轴 > 此值 ∧ 副轴 < rotate_threshold - rotate_amb
@@ -207,11 +207,11 @@ private:
     //   提为成员后 begin() 可以一并重置，校准 wizard 每步干净起步。
     uint32_t _face_down_since_ms = 0;
     uint32_t _face_up_since_ms   = 0;
-    // Face events are edge-triggered: holding a face-down/up pose must not
-    // emit repeated events after the cooldown expires.  Re-arm only after
-    // leaving the corresponding threshold zone.
+    // Face transitions are edge-triggered: held face-down and held release
+    // poses must not repeat. A release can only occur after face-down became active.
     bool     _face_down_armed    = true;
-    bool     _face_up_armed      = true;
+    bool     _face_up_armed      = false;
+    bool     _face_down_active   = false;
     float    _tap_prev_gz        = 1.0f;
 
     OrientationState classifyOrientation_(float ax, float ay) const;
