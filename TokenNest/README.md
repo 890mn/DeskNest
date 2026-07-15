@@ -3,10 +3,12 @@
 > DeskNest 本地控制服务。它聚合 ChatGPT/MiniMax 用量，并为 K10 提供
 > what2eat 草稿、显式发布和版本化同步接口。
 
-**子项目**：`C:\HinarCode\DeskNest\TokenNest`
+**子项目**：DeskNest 仓库内的 `TokenNest/`
 **栈**：Node.js 18+（内置 test runner + fetch） + Express
 **端口**：`8787`（避开 gesture dashboard 的 `8765`）
 **协议**：HTTP / JSON
+
+TokenNest 的 npm package 版本目前独立保持 `0.1.0`；它不等同于 DeskNest 固件的 V1.0 版本号。
 
 ---
 
@@ -21,7 +23,7 @@
 ## 快速开始
 
 ```powershell
-cd C:\HinarCode\DeskNest\TokenNest
+cd C:\path\to\DeskNest\TokenNest
 npm install
 copy config\minimax.example.json config\minimax.json   # 填入你的 MiniMax apiKey
 copy config\tokennest.example.yaml config\tokennest.yaml
@@ -46,7 +48,7 @@ npm start
 TokenNest **不读浏览器 cookie**（LevelDB 加密、DPAPI 受保护），而是复用 `codex` CLI 的 OAuth 结果：
 
 ```powershell
-npx -y @openai/codex auth login
+codex login
 ```
 
 登录后，token 落到 `%USERPROFILE%\.codex\auth.json`，TokenNest 自动读。
@@ -56,7 +58,7 @@ npx -y @openai/codex auth login
 到 <https://platform.minimaxi.com> 申请 API key，填到 `config\minimax.json`：
 
 ```json
-{ "apiKey": "eyJhbGciOiJSUzI1NiIsIn..." }
+{ "apiKey": "YOUR_MINIMAX_API_KEY" }
 ```
 
 > ⚠️ 该文件已被 .gitignore 排除，**不要**提交到 git。
@@ -71,7 +73,7 @@ npx -y @openai/codex auth login
 # 1. 下载 NSSM (https://nssm.cc)，把 nssm.exe 加到 PATH
 # 2. 装为 Windows 服务
 powershell -ExecutionPolicy Bypass -File scripts\install-service.ps1
-# 3. 重启电脑，30s 内服务自启
+# 3. 重启电脑后由 Windows 服务管理器自动启动
 ```
 
 ---
@@ -91,7 +93,7 @@ powershell -ExecutionPolicy Bypass -File scripts\install-service.ps1
 }
 ```
 
-**`GET /api/usage`** — 5h/weekly 双窗口完整 dump，给 K10 未来 P1-D 消费：
+**`GET /api/usage`** — 5h/weekly 双窗口完整诊断视图；V1.0 K10 不直接消费：
 
 ```json
 {
@@ -195,7 +197,7 @@ TokenNest/
 
 ## 已知限制
 
-- **MiniMax 接口真实性未亲自验证**：全网唯一参考实现是 `Eyozy/minimax-usage`，字段命名反直觉（`usage_count` 实际是"剩余"）。第一次跑一定要 `npm run probe:minimax` 抓真响应，对照字段名。
+- **MiniMax live 结果需要按账号验证**：fixture 与解析测试不能证明当前账号的真实上游字段。首次配置及发布候选验收时运行 `npm run probe:minimax`，确认 `usage_count` 等字段语义。
 - **K10 实机仍需独立验收**：服务测试只能证明协议与持久化行为，不能替代开发板的 NVS、断网恢复、B pick 和视觉验收。
 - **本地 HTTP 无 TLS**：what2eat sync/ack 无设备令牌，管理 API 可选管理员令牌；
   这些边界不等同于公网安全方案，不要把 TokenNest 直接暴露到互联网。

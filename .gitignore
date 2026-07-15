@@ -19,6 +19,10 @@ docs/
 docs/*
 !docs/ui-mockup/
 !docs/ui-mockup/index.html
+!docs/USER_GUIDE.md
+!docs/ARCHITECTURE.md
+!docs/V1_RELEASE_CHECKLIST.md
+!docs/IMAGE_PROMPTS.md
 docs/control/
 
 # HALF-Work control/task artifacts and local runtime files
@@ -38,6 +42,10 @@ TokenNest/tmp/
 TokenNest/config/tokennest.yaml
 TokenNest/config/minimax.json
 TokenNest/.env
+!TokenNest/docs/
+TokenNest/docs/*
+!TokenNest/docs/STARTUP.md
+!TokenNest/docs/WIRE_FORMAT.md
 
 # DeskNest 个人凭证配置（WiFi SSID/密码、TokenNest URL）
 # 复制 platformio.local.ini.example 为 platformio.local.ini 后填入

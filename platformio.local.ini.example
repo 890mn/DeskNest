@@ -1,7 +1,7 @@
 ; DeskNest - platformio.local.ini.example
 ; 栖屏 DeskNest — 本机个人配置模板（入库，复制为 platformio.local.ini 后填入）
 ;
-; 为什么有这个文件：SSID/密码/TokenNest URL/设备 token 是个人凭证或家庭网络环境,
+; 为什么有这个文件：SSID/密码与 TokenNest URL 是个人凭证或家庭网络环境，
 ; 不应该 commit 到 git。PIO 支持 platformio.local.ini 这样的"按机器配置"
 ; 文件自动从 .example 复制。
 ;
@@ -10,10 +10,10 @@
 ;
 ; 文件格式:
 ;   [secrets] section 由 pio_local_config.py 用 configparser 读取。
-;   值原样写入,无需引号包裹 —— SCons 会在注入编译器时负责 shell 转义,
+;   值无需引号包裹；脚本会转义为 C 字符串并写入生成的 secrets.h。
 ;
-; 留空表示"未配置":src/config.h 里的 #ifndef 默认值生效 (空字符串),
-; 固件 graceful 降级到 NVS Config Portal / 演示数据。
+; 留空表示“未配置”：src/config.h 里的 #ifndef 默认值生效（空字符串）。
+; 当前 V1.0 不承诺完整的板端 WiFi 配网门户；发布构建应填写真实值。
 
 [secrets]
 ; K10 要连的 WiFi
