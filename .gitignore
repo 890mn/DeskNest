@@ -23,6 +23,8 @@ docs/*
 !docs/ARCHITECTURE.md
 !docs/V1_RELEASE_CHECKLIST.md
 !docs/IMAGE_PROMPTS.md
+!docs/DeskNest.png
+!docs/structure.png
 docs/control/
 
 # HALF-Work control/task artifacts and local runtime files
