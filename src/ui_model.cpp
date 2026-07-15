@@ -70,6 +70,9 @@ UiModel dn_build_ui_model() {
 
     const AIUsageStatus aiStatus = boot_active ? dn_ai_usage_demo_status() : dn_ai_usage_status();
     model.aiUsage.totalPercent = aiStatus.totalPercent;
+    model.aiUsage.alertThresholdPct = dn_settings_ai_threshold(in.state.settings);
+    model.aiUsage.alertActive = dn_settings_ai_alert_active(aiStatus.totalPercent,
+                                                           in.state.settings);
     model.aiUsage.chatgpt = dn_usage_item(aiStatus.chatgpt);
     model.aiUsage.codex = dn_usage_item(aiStatus.codex);
     model.aiUsage.minimax = dn_usage_item(aiStatus.minimax);
@@ -83,7 +86,8 @@ UiModel dn_build_ui_model() {
     model.aiUsage.serverNow = aiStatus.serverNow;
     model.aiUsage.nextRefreshInSec = aiStatus.nextRefreshInSec;
     model.overview.aiTotalPercent = aiStatus.totalPercent;
-    model.homeFocus = dn_resolve_home_focus(aiStatus, in.what2eatChoicePending);
+    model.homeFocus = dn_resolve_home_focus(aiStatus, in.what2eatChoicePending,
+                                            in.state.settings);
     model.overview.aiStatusText = aiStatus.fromCache ? "cache" : "demo";
     model.overview.updatedAtText = aiStatus.updatedAtText;
     const char* net_time = boot_active ? "" : dn_ai_usage_time_text();

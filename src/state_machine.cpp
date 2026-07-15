@@ -6,6 +6,7 @@
 #include "page_registry.h"
 #include "buttons.h"
 #include "settings_module.h"
+#include "device_settings.h"
 #include "what2eat_module.h"
 
 #include <Arduino.h>
@@ -81,7 +82,10 @@ void StateMachine::begin() {
     _s.lastInputMs   = millis();
     _temp_unlock_expire_ms = 0;
     _s.settingsSelectedIndex = 0;
-    for (uint8_t& value : _s.settingsValues) value = 0;
+    const bool settings_loaded = dn_settings_load(&_s.settings);
+    Serial.printf("[D][SETTINGS] %s schema=%u\n",
+                  settings_loaded ? "loaded" : "defaults",
+                  (unsigned)_s.settings.schemaVersion);
 
     Serial.println("[D][STATE] begin → FACE_UP / BOOT / PORTRAIT / OVERVIEW");
 }
@@ -155,6 +159,12 @@ void StateMachine::updateButton(ButtonEvent b, uint32_t now_ms) {
         return;
     }
     if (b == BUTTON_NONE) return;
+    // Every accepted button input wakes the idle screen and resets its timer,
+    // including Settings/what2eat actions that return before applyButton_().
+    _s.lastInputMs = now_ms;
+    if (_s.system == SYSTEM_AMBIENT || _s.system == SYSTEM_LIGHT_SLEEP) {
+        _s.system = SYSTEM_ACTIVE;
+    }
     if (_s.page == PAGE_PORTRAIT_WHAT2EAT && b == BUTTON_PREV) {
         _s.lastInputMs = now_ms;
         if (_s.system == SYSTEM_AMBIENT || _s.system == SYSTEM_LIGHT_SLEEP) {
@@ -166,17 +176,19 @@ void StateMachine::updateButton(ButtonEvent b, uint32_t now_ms) {
     }
     if (_s.page == PAGE_PORTRAIT_SETTINGS) {
         if (b == BUTTON_NEXT) {
-            _s.settingsSelectedIndex = (uint8_t)((_s.settingsSelectedIndex + 1) % 4);
+            _s.settingsSelectedIndex = (uint8_t)((_s.settingsSelectedIndex + 1) % DN_SETTINGS_ROW_COUNT);
             Serial.printf("[D][SETTINGS] select=%u\n", (unsigned)_s.settingsSelectedIndex);
             return;
         }
         if (b == BUTTON_PREV) {
             const uint8_t row = _s.settingsSelectedIndex;
             const uint8_t count = dn_settings_option_count(row);
-            _s.settingsValues[row] = (uint8_t)((_s.settingsValues[row] + 1) % count);
-            if (row == 1) g_gesture_confirm_enabled = (_s.settingsValues[row] == 0);
+            const uint8_t value = (uint8_t)((dn_settings_value(_s.settings, row) + 1) % count);
+            dn_settings_set_value(_s.settings, row, value);
+            const bool saved = dn_settings_save(_s.settings);
             Serial.printf("[D][SETTINGS] row=%u value=%u\n", (unsigned)row,
-                          (unsigned)_s.settingsValues[row]);
+                          (unsigned)value);
+            if (!saved) Serial.println("[D][SETTINGS] persist failed");
             return;
         }
     }
@@ -391,18 +403,22 @@ void StateMachine::applyPowerTimeout_(uint32_t now_ms) {
 
     const uint32_t idle_ms = now_ms - _s.lastInputMs;
 
-    // PowerProfile 暂未接 NVS，先固定 BALANCED；P1 阶段改成查表
-    constexpr uint32_t T_AMBIENT = defaults::T_AMBIENT_MS_BALANCED;
-    constexpr uint32_t T_SLEEP   = defaults::T_SLEEP_MS_BALANCED;
+    const PowerTimeouts timeouts = dn_settings_power_timeouts(_s.settings);
+    if (!timeouts.idleSleepEnabled) {
+        if (_s.system == SYSTEM_AMBIENT || _s.system == SYSTEM_LIGHT_SLEEP) {
+            _s.system = SYSTEM_ACTIVE;
+        }
+        return;
+    }
 
-    if (_s.system == SYSTEM_ACTIVE && idle_ms >= T_AMBIENT) {
+    if (_s.system == SYSTEM_ACTIVE && idle_ms >= timeouts.ambientMs) {
         _s.system = SYSTEM_AMBIENT;
         Serial.printf("[D][STATE] idle %lus → AMBIENT\n",
-                      (unsigned long)(T_AMBIENT / 1000));
-    } else if (_s.system == SYSTEM_AMBIENT && idle_ms >= T_SLEEP) {
+                      (unsigned long)(timeouts.ambientMs / 1000));
+    } else if (_s.system == SYSTEM_AMBIENT && idle_ms >= timeouts.sleepMs) {
         _s.system = SYSTEM_LIGHT_SLEEP;
         Serial.printf("[D][STATE] idle %lus → LIGHT_SLEEP\n",
-                      (unsigned long)(T_SLEEP / 1000));
+                      (unsigned long)(timeouts.sleepMs / 1000));
     }
 }
 

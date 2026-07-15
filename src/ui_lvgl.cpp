@@ -46,6 +46,7 @@ static constexpr uint32_t C_GPT       = 0x8EA9C4;
 static constexpr uint32_t C_MINIMAX   = 0xB49ACF;
 static constexpr uint32_t C_ALERT     = 0xC97C7C;
 static constexpr uint32_t C_BOOT      = 0xE16811;
+static constexpr uint32_t HOME_FOCUS_AUTO_ROTATE_MS = 30UL * 1000UL;
 
 // Boot footer geometry: the logo anchors the progress rail from the left.
 constexpr int BOOT_PANEL_X = 10;
@@ -430,19 +431,46 @@ static void format_date_short(char* out, size_t cap, const char* iso_text) {
     snprintf(out, cap, "%02d-%02d", tm_exp.tm_mon + 1, tm_exp.tm_mday);
 }
 
+static void format_time_hms(char* out, size_t cap, const UiModel& model) {
+    if (!out || cap == 0) return;
+    out[0] = '\0';
+    struct tm tm_now = {};
+    time_t now_epoch = dn_ai_usage_now_epoch();
+    bool valid = now_epoch > 0;
+    if (valid) {
+        localtime_r(&now_epoch, &tm_now);
+    } else {
+        valid = parse_iso_local_time(model.aiUsage.serverNow, &tm_now);
+    }
+    if (valid) {
+        snprintf(out, cap, "%02d:%02d:%02d",
+                 tm_now.tm_hour, tm_now.tm_min, tm_now.tm_sec);
+    } else {
+        if (model.overview.timeText[0]) {
+            snprintf(out, cap, "%s:00", model.overview.timeText);
+        } else {
+            snprintf(out, cap, "--:--:--");
+        }
+    }
+}
+
 static uint32_t bar_color(int pct) {
     if (pct > 85) return C_ALERT;
     if (pct > 50) return C_SAND;
     return C_BRAND;
 }
 
-static void set_bar(lv_obj_t* fill, int pct, int max_w) {
+static void set_bar(lv_obj_t* fill, int pct, int max_w,
+                    bool alert = false, bool modelOwnsAlert = false) {
     if (!fill) return;
     if (pct < 0) pct = 0;
     if (pct > 100) pct = 100;
     const int w = (max_w * pct) / 100;
     if (lv_obj_get_width(fill) != w) lv_obj_set_width(fill, w);
-    lv_obj_set_style_bg_color(fill, lv_color_hex(bar_color(pct)), 0);
+    const uint32_t color = alert
+        ? C_ALERT
+        : (modelOwnsAlert ? (pct > 50 ? C_SAND : C_BRAND) : bar_color(pct));
+    lv_obj_set_style_bg_color(fill, lv_color_hex(color), 0);
 }
 
 static lv_obj_t* make_row(lv_obj_t* parent, int h = 24, int gap = 6) {
@@ -965,6 +993,14 @@ static void build_overview() {
 static void update_overview(const UiModel& m) {
     PageObjects& po = page_objects(PAGE_PORTRAIT_OVERVIEW);
     char buf[48];
+    HomeFocusMode focus_mode = m.homeFocus.mode;
+    if (focus_mode == HOME_FOCUS_AUTO) {
+        switch ((m.view.nowMs / HOME_FOCUS_AUTO_ROTATE_MS) % 3U) {
+            case 0: focus_mode = HOME_FOCUS_AI; break;
+            case 1: focus_mode = HOME_FOCUS_LIFE; break;
+            default: focus_mode = HOME_FOCUS_MINIMAL; break;
+        }
+    }
 
     set_text(po.labels[1], "AI USAGE");
     const char* ai_state = m.aiUsage.warningText && m.aiUsage.warningText[0]
@@ -975,7 +1011,8 @@ static void update_overview(const UiModel& m) {
     snprintf(buf, sizeof(buf), "%u%%", (unsigned)m.aiUsage.totalPercent);
     set_text(po.labels[3], buf);
     set_text(po.labels[4], ai_state);
-    set_bar(po.bars[0], m.aiUsage.totalPercent, 204);
+    set_bar(po.bars[0], m.aiUsage.totalPercent, 204,
+            m.aiUsage.alertActive, true);
 
     // TokenNest's ChatGPT quota is sourced through the Codex CLI OAuth flow.
     // Keep the source field, but expose one Codex row instead of duplicating it.
@@ -1018,8 +1055,59 @@ static void update_overview(const UiModel& m) {
         set_text(po.labels[15], "--");
     }
 
-    const char* daily_advice = dn_home_daily_advice(m);
-    snprintf(buf, sizeof(buf), "%s", daily_advice);
+    // All focus modes share the final card slot. AI focus uses the same reset
+    // dates as the AI usage page, but keeps them in one readable text line.
+    if (po.labels[16]) {
+        lv_obj_clear_flag(po.labels[16], LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_style_text_align(po.labels[16], LV_TEXT_ALIGN_LEFT, 0);
+    }
+
+    switch (focus_mode) {
+        case HOME_FOCUS_AI: {
+            bool has_reset = false;
+            buf[0] = '\0';
+            for (uint8_t i = 0; i < 4; ++i) {
+                if (i < m.aiUsage.codexResetCount &&
+                    m.aiUsage.codexResets[i].expireAt &&
+                    m.aiUsage.codexResets[i].expireAt[0]) {
+                    char date_text[16];
+                    format_date_short(date_text, sizeof(date_text),
+                                      m.aiUsage.codexResets[i].expireAt);
+                    const size_t used = strlen(buf);
+                    snprintf(buf + used, sizeof(buf) - used, "%s%s",
+                             has_reset ? "  " : "", date_text);
+                    has_reset = true;
+                }
+            }
+            if (!has_reset) {
+                snprintf(buf, sizeof(buf), "暂无重置");
+                lv_obj_set_style_text_font(po.labels[16], &lv_font_16_dynamic, 0);
+                lv_obj_set_style_text_color(po.labels[16], lv_color_hex(C_DIM), 0);
+            } else {
+                lv_obj_set_style_text_font(po.labels[16], font_ascii_title(), 0);
+                lv_obj_set_style_text_color(po.labels[16], lv_color_hex(C_TEXT), 0);
+            }
+            break;
+        }
+        case HOME_FOCUS_LIFE:
+            snprintf(buf, sizeof(buf), "%s",
+                     m.what2eat.recommendation[0]
+                         ? m.what2eat.recommendation : "暂无信息");
+            lv_obj_set_style_text_font(po.labels[16], &lv_font_16_dynamic, 0);
+            lv_obj_set_style_text_color(po.labels[16], lv_color_hex(C_TEXT), 0);
+            break;
+        case HOME_FOCUS_MINIMAL:
+            format_time_hms(buf, sizeof(buf), m);
+            lv_obj_set_style_text_font(po.labels[16], font_cn_title(), 0);
+            lv_obj_set_style_text_color(po.labels[16], lv_color_hex(C_TEXT), 0);
+            lv_obj_set_style_text_align(po.labels[16], LV_TEXT_ALIGN_CENTER, 0);
+            break;
+        default:
+            snprintf(buf, sizeof(buf), "暂无重置");
+            lv_obj_set_style_text_font(po.labels[16], &lv_font_16_dynamic, 0);
+            lv_obj_set_style_text_color(po.labels[16], lv_color_hex(C_DIM), 0);
+            break;
+    }
     set_text(po.labels[16], buf);
 }
 
@@ -1375,6 +1463,11 @@ static void build_settings() {
         po.labels[2 + i * 2] = make_label(row, &sty_text16);
         lv_obj_set_style_text_align(po.labels[2 + i * 2], LV_TEXT_ALIGN_RIGHT, 0);
     }
+    po.labels[13] = make_label(root, &sty_ascii14, "DeskNest v" DESKNEST_VERSION);
+    lv_obj_set_style_text_color(po.labels[13], lv_color_hex(C_DIM), 0);
+    lv_obj_set_width(po.labels[13], 220);
+    lv_obj_set_style_text_align(po.labels[13], LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_pad_top(po.labels[13], 8, 0);
 
     po.built = true;
 }
@@ -1561,6 +1654,10 @@ void dn_ui_setup() {
     desknest::s_last_lvgl_pump_ms = desknest::s_last_ui_update_ms;
     desknest::s_ready = true;
     Serial.println("[D][UI] LVGL ready");
+}
+
+void dn_ui_set_backlight(bool enabled) {
+    digital_write(eLCD_BLK, enabled ? 1 : 0);
 }
 
 void dn_ui_render() {

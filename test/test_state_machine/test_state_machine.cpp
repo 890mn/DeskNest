@@ -1,6 +1,7 @@
 #include <unity.h>
 
 #include "../../src/gesture.cpp"
+#include "../../src/device_settings.cpp"
 #include "../../src/state_machine.cpp"
 
 using namespace desknest;
@@ -22,6 +23,7 @@ static void resetClock(uint32_t ms = 1000) {
 
 void setUp(void) {
     resetClock();
+    dn_settings_test_reset_store();
     g_gesture.begin();
     g_state.begin();
     g_test_what2eat_pick_calls = 0;
@@ -79,10 +81,49 @@ void test_settings_uses_a_to_select_and_b_to_cycle_current_value() {
     g_state.updateButton(BUTTON_NEXT, g_mock_millis);
     TEST_ASSERT_EQUAL_UINT8(1, g_state.snapshot().settingsSelectedIndex);
 
-    const uint8_t before = g_state.snapshot().settingsValues[1];
+    const uint8_t before = g_state.snapshot().settings.aiAlertIndex;
     g_state.updateButton(BUTTON_PREV, g_mock_millis + 100);
-    TEST_ASSERT_NOT_EQUAL(before, g_state.snapshot().settingsValues[1]);
+    TEST_ASSERT_NOT_EQUAL(before, g_state.snapshot().settings.aiAlertIndex);
     TEST_ASSERT_EQUAL(PAGE_PORTRAIT_SETTINGS, g_state.snapshot().page);
+}
+
+void test_settings_cycle_persists_across_state_restart() {
+    g_state.forcePage(PAGE_PORTRAIT_SETTINGS);
+    g_state.updateButton(BUTTON_PREV, g_mock_millis + 100);
+    TEST_ASSERT_EQUAL_UINT8(HOME_FOCUS_AI, g_state.snapshot().settings.homeFocusMode);
+
+    g_mock_millis += 200;
+    g_state.begin();
+    TEST_ASSERT_EQUAL_UINT8(HOME_FOCUS_AI, g_state.snapshot().settings.homeFocusMode);
+}
+
+void test_saver_power_timeouts_and_button_wake() {
+    DeviceSettings saver = dn_settings_defaults();
+    saver.powerMode = POWER_SAVER;
+    dn_settings_test_seed_store(saver);
+    g_state.begin();
+    g_state.forceSystem(SYSTEM_ACTIVE);
+
+    g_state.tickPowerTimeout(g_mock_millis + 14999);
+    TEST_ASSERT_EQUAL(SYSTEM_ACTIVE, g_state.snapshot().system);
+    g_state.tickPowerTimeout(g_mock_millis + 15000);
+    TEST_ASSERT_EQUAL(SYSTEM_AMBIENT, g_state.snapshot().system);
+    g_state.tickPowerTimeout(g_mock_millis + 45000);
+    TEST_ASSERT_EQUAL(SYSTEM_LIGHT_SLEEP, g_state.snapshot().system);
+
+    g_state.updateButton(BUTTON_NEXT, g_mock_millis + 45100);
+    TEST_ASSERT_EQUAL(SYSTEM_ACTIVE, g_state.snapshot().system);
+}
+
+void test_always_on_disables_idle_transitions() {
+    DeviceSettings always_on = dn_settings_defaults();
+    always_on.powerMode = POWER_ALWAYS_ON;
+    dn_settings_test_seed_store(always_on);
+    g_state.begin();
+    g_state.forceSystem(SYSTEM_ACTIVE);
+
+    g_state.tickPowerTimeout(g_mock_millis + 24UL * 60UL * 60UL * 1000UL);
+    TEST_ASSERT_EQUAL(SYSTEM_ACTIVE, g_state.snapshot().system);
 }
 
 void test_what2eat_b_short_picks_once_and_b_long_keeps_back_behavior() {
@@ -105,6 +146,9 @@ int main(int argc, char **argv) {
     RUN_TEST(test_face_down_and_face_up_restore_portrait_page);
     RUN_TEST(test_short_press_buttons_do_not_switch_pages_in_gesture_first_mode);
     RUN_TEST(test_settings_uses_a_to_select_and_b_to_cycle_current_value);
+    RUN_TEST(test_settings_cycle_persists_across_state_restart);
+    RUN_TEST(test_saver_power_timeouts_and_button_wake);
+    RUN_TEST(test_always_on_disables_idle_transitions);
     RUN_TEST(test_what2eat_b_short_picks_once_and_b_long_keeps_back_behavior);
     return UNITY_END();
 }

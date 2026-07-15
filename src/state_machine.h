@@ -13,6 +13,7 @@
 
 #include "config.h"
 #include "gesture.h"
+#include "device_settings.h"
 
 namespace desknest {
 
@@ -52,10 +53,8 @@ struct StateSnapshot {
     UIPage           last_portrait_page   = PAGE_PORTRAIT_OVERVIEW;
     UIPage           last_landscape_page  = PAGE_LANDSCAPE_FOCUS;
 
-    // Runtime-only settings state. Persistence is intentionally deferred
-    // until the settings vocabulary and product choices are finalized.
     uint8_t          settingsSelectedIndex = 0;
-    uint8_t          settingsValues[4] = {};
+    DeviceSettings   settings = dn_settings_defaults();
 };
 
 class StateMachine {

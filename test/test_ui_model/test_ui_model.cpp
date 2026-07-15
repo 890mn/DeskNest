@@ -116,12 +116,43 @@ void test_home_focus_falls_back_to_default_summary() {
 void test_home_focus_honors_manual_what2eat_selection() {
     UiModelInputs in = {};
     in.state = baseSnapshot();
-    in.state.settingsValues[0] = 2;
+    in.state.settings.homeFocusMode = HOME_FOCUS_LIFE;
 
     UiModel model = dn_build_ui_model_from_inputs(in);
     TEST_ASSERT_EQUAL(HOME_FOCUS_LIFE_REMINDER, model.homeFocus.kind);
-    TEST_ASSERT_EQUAL_STRING("what2eat choice", model.homeFocus.title);
-    TEST_ASSERT_EQUAL_STRING("Open what2eat", model.homeFocus.actionLabel);
+    TEST_ASSERT_EQUAL_STRING("what2eat", model.homeFocus.title);
+    TEST_ASSERT_EQUAL_STRING("打开 what2eat", model.homeFocus.actionLabel);
+}
+
+void test_home_focus_exposes_selected_mode_to_renderer() {
+    UiHomeFocusProps focus = {};
+    AIUsageStatus ai = {};
+    DeviceSettings settings = dn_settings_defaults();
+
+    settings.homeFocusMode = HOME_FOCUS_AI;
+    focus = dn_resolve_home_focus(ai, false, settings);
+    TEST_ASSERT_EQUAL(HOME_FOCUS_AI, focus.mode);
+
+    settings.homeFocusMode = HOME_FOCUS_LIFE;
+    focus = dn_resolve_home_focus(ai, false, settings);
+    TEST_ASSERT_EQUAL(HOME_FOCUS_LIFE, focus.mode);
+
+    settings.homeFocusMode = HOME_FOCUS_MINIMAL;
+    focus = dn_resolve_home_focus(ai, false, settings);
+    TEST_ASSERT_EQUAL(HOME_FOCUS_MINIMAL, focus.mode);
+}
+
+void test_ui_model_uses_selected_ai_threshold_boundary() {
+    AIUsageStatus ai = {};
+    DeviceSettings settings = dn_settings_defaults();
+    settings.aiAlertIndex = 2;
+
+    ai.totalPercent = 84;
+    TEST_ASSERT_NOT_EQUAL(HOME_FOCUS_AI_RISK,
+                          dn_resolve_home_focus(ai, false, settings).kind);
+    ai.totalPercent = 85;
+    TEST_ASSERT_EQUAL(HOME_FOCUS_AI_RISK,
+                      dn_resolve_home_focus(ai, false, settings).kind);
 }
 
 void test_ui_model_maps_owned_what2eat_snapshot() {
@@ -180,6 +211,8 @@ int main(int argc, char **argv) {
     RUN_TEST(test_home_focus_uses_what2eat_reminder_when_ai_is_normal);
     RUN_TEST(test_home_focus_falls_back_to_default_summary);
     RUN_TEST(test_home_focus_honors_manual_what2eat_selection);
+    RUN_TEST(test_home_focus_exposes_selected_mode_to_renderer);
+    RUN_TEST(test_ui_model_uses_selected_ai_threshold_boundary);
     RUN_TEST(test_ui_model_maps_owned_what2eat_snapshot);
     RUN_TEST(test_ui_model_what2eat_invalid_selection_is_empty);
     return UNITY_END();

@@ -26,7 +26,7 @@ namespace desknest {
 // ============================================================================
 
 #ifndef DESKNEST_VERSION
-#define DESKNEST_VERSION "0.1.0"
+#define DESKNEST_VERSION "1.0"
 #endif
 
 // Optional TokenNest HTTP bridge.

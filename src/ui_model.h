@@ -143,6 +143,7 @@ enum HomeFocusKind : uint8_t {
 };
 
 struct UiHomeFocusProps {
+    HomeFocusMode mode = HOME_FOCUS_AUTO;
     HomeFocusKind kind = HOME_FOCUS_DEFAULT;
     const char* title = "DeskNest";
     const char* detail = "今日状态已准备好";
@@ -158,6 +159,8 @@ struct UiCodexResetProps {
 
 struct UiAiUsageProps {
     uint8_t totalPercent = 0;
+    uint8_t alertThresholdPct = 80;
+    bool alertActive = false;
     UiUsageItemProps minimax;
     UiUsageItemProps codex;
     UiUsageItemProps chatgpt;
@@ -473,8 +476,37 @@ inline UiCustomCardProps dn_custom_card(const char* label,
 }
 
 inline UiHomeFocusProps dn_resolve_home_focus(const AIUsageStatus& ai,
-                                              bool what2eatChoicePending) {
+                                              bool what2eatChoicePending,
+                                              const DeviceSettings& settings = dn_settings_defaults()) {
     UiHomeFocusProps out;
+    out.mode = static_cast<HomeFocusMode>(settings.homeFocusMode);
+    if (settings.homeFocusMode == HOME_FOCUS_AI) {
+        out.kind = HOME_FOCUS_AI_RISK;
+        out.title = "AI 用量";
+        out.detail = "查看当前额度和刷新时间";
+        out.actionLabel = "查看 AI";
+        out.priority = 90;
+        out.actionable = true;
+        return out;
+    }
+    if (settings.homeFocusMode == HOME_FOCUS_LIFE) {
+        out.kind = HOME_FOCUS_LIFE_REMINDER;
+        out.title = "what2eat";
+        out.detail = "看看今天吃什么";
+        out.actionLabel = "打开 what2eat";
+        out.priority = 60;
+        out.actionable = true;
+        return out;
+    }
+    if (settings.homeFocusMode == HOME_FOCUS_MINIMAL) {
+        out.kind = HOME_FOCUS_DEFAULT;
+        out.title = "DeskNest";
+        out.detail = "保持桌面清爽";
+        out.actionLabel = "";
+        out.priority = 0;
+        out.actionable = false;
+        return out;
+    }
     // An explicit warning wins over the aggregate percentage: it may carry
     // source/cache/network context that a percentage alone cannot express.
     if (ai.warningText && ai.warningText[0] != '\0') {
@@ -484,7 +516,7 @@ inline UiHomeFocusProps dn_resolve_home_focus(const AIUsageStatus& ai,
         out.actionLabel = "查看 AI";
         out.priority = 100;
         out.actionable = true;
-    } else if (ai.totalPercent >= 80) {
+    } else if (dn_settings_ai_alert_active(ai.totalPercent, settings)) {
         out.kind = HOME_FOCUS_AI_RISK;
         out.title = "AI 用量偏高";
         out.detail = "额度接近上限, 建议查看详情";
@@ -574,32 +606,9 @@ inline UiModel dn_build_ui_model_from_inputs(const UiModelInputs& in) {
     m.aiUsage.nextRefreshInSec = aiStatus.nextRefreshInSec;
     m.overview.aiTotalPercent = aiStatus.totalPercent;
 
-    m.homeFocus = dn_resolve_home_focus(aiStatus, in.what2eatChoicePending);
-    switch (s.settingsValues[0]) {
-        case 1:
-            m.homeFocus.kind = HOME_FOCUS_AI_RISK;
-            m.homeFocus.title = "AI usage";
-            m.homeFocus.detail = "Review available windows";
-            m.homeFocus.actionLabel = "Open AI";
-            m.homeFocus.actionable = true;
-            break;
-        case 2:
-            m.homeFocus.kind = HOME_FOCUS_LIFE_REMINDER;
-            m.homeFocus.title = "what2eat choice";
-            m.homeFocus.detail = "Choose with what2eat";
-            m.homeFocus.actionLabel = "Open what2eat";
-            m.homeFocus.actionable = true;
-            break;
-        case 3:
-            m.homeFocus.kind = HOME_FOCUS_DEFAULT;
-            m.homeFocus.title = "DeskNest";
-            m.homeFocus.detail = "Keep one space clear";
-            m.homeFocus.actionLabel = "";
-            m.homeFocus.actionable = false;
-            break;
-        default:
-            break;
-    }
+    m.aiUsage.alertThresholdPct = dn_settings_ai_threshold(s.settings);
+    m.aiUsage.alertActive = dn_settings_ai_alert_active(aiStatus.totalPercent, s.settings);
+    m.homeFocus = dn_resolve_home_focus(aiStatus, in.what2eatChoicePending, s.settings);
 
     EnvironmentInput envIn;
     envIn.valid = in.temperatureValid;
@@ -618,7 +627,7 @@ inline UiModel dn_build_ui_model_from_inputs(const UiModelInputs& in) {
     m.environment.lightGrade = envStatus.lightGrade;
     m.environment.adviceText = envStatus.adviceText;
 
-    const SettingsStatus settingsStatus = dn_settings_status(s.settingsValues,
+    const SettingsStatus settingsStatus = dn_settings_status(s.settings,
                                                              s.settingsSelectedIndex);
     m.settings.rowCount = settingsStatus.rowCount;
     for (uint8_t i = 0; i < settingsStatus.rowCount && i < 8; ++i) {

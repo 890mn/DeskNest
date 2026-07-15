@@ -30,6 +30,7 @@ namespace desknest {
 // extern "C" 的 dn_app_setup / dn_app_loop 在文件作用域，看不到匿名 namespace 的成员。
 uint32_t g_last_heartbeat_ms = 0;
 uint32_t g_loop_count = 0;
+bool g_backlight_on = true;
 
 namespace {
 
@@ -414,6 +415,14 @@ void dn_app_loop() {
     // 4) 状态机
     const OrientationState detected = g_gesture.orientation();
     g_state.update(g, b, detected, now);
+
+    // Face-down is a distinct product page, not idle screen-off. Only the
+    // ordinary LIGHT_SLEEP state blanks the LCD backlight.
+    const bool want_backlight = g_state.snapshot().system != SYSTEM_LIGHT_SLEEP;
+    if (want_backlight != g_backlight_on) {
+        dn_ui_set_backlight(want_backlight);
+        g_backlight_on = want_backlight;
+    }
 
     // 5) UI 渲染（按页面变化或 1Hz 节流，内部做）
     dn_ui_render();
