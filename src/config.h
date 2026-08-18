@@ -46,6 +46,21 @@ namespace desknest {
 #define DESKNEST_TOKENNEST_STATUS_URL ""
 #endif
 
+// Build-profile switches.  The normal DeskNest image keeps the existing
+// network-gated boot path.  The dedicated DeskNestOfflineTest profile turns
+// these on without putting machine-local credentials into tracked files.
+#ifndef DESKNEST_BOOT_SKIP_PRECHECKS
+#define DESKNEST_BOOT_SKIP_PRECHECKS 0
+#endif
+
+#ifndef DESKNEST_OFFLINE_MODE
+#define DESKNEST_OFFLINE_MODE 0
+#endif
+
+#ifndef DESKNEST_TEST_PAGE_ONLY
+#define DESKNEST_TEST_PAGE_ONLY 0
+#endif
+
 // ============================================================================
 // 4 轴状态枚举（核心 —— 见 plan §2）
 // ============================================================================
@@ -75,11 +90,12 @@ enum OrientationState : uint8_t {
     ORIENTATION_FACE_DOWN,
 };
 
-// 3) UI 页面（9 个：竖 5 + 横 3 + 特殊 1）
+// 3) UI 页面（10 个：竖 6 + 横 3 + 特殊 1）
 enum UIPage : uint8_t {
     PAGE_PORTRAIT_OVERVIEW = 0,
     PAGE_PORTRAIT_AI_USAGE,
     PAGE_PORTRAIT_WHAT2EAT,
+    PAGE_PORTRAIT_COMPONENT_TEST,
     PAGE_PORTRAIT_ENVIRONMENT,
     PAGE_PORTRAIT_SETTINGS,
     PAGE_LANDSCAPE_OVERVIEW,
@@ -159,6 +175,19 @@ enum GestureConfirmButton : uint8_t { GESTURE_CONFIRM_NONE = 0, GESTURE_CONFIRM_
 // confirmation/shortcut assignments; long-press actions remain unaffected.
 #ifndef DESKNEST_NAV_PREFERENCE
 #define DESKNEST_NAV_PREFERENCE NAV_GESTURE_FIRST
+#endif
+
+// Component-test wiring defaults.  These are the K10 labeled IO pins; keep
+// them overrideable for a local harness.  P0/P1 map to GPIO1/GPIO2 in the
+// K10 Arduino variant, rather than to numeric GPIO0/GPIO1.
+#ifndef DESKNEST_COMPONENT_SERVO_PIN
+#define DESKNEST_COMPONENT_SERVO_PIN 1  // P0
+#endif
+#ifndef DESKNEST_COMPONENT_IR_PIN
+#define DESKNEST_COMPONENT_IR_PIN 2     // P1
+#endif
+#ifndef DESKNEST_COMPONENT_MOTOR_I2C_ADDR
+#define DESKNEST_COMPONENT_MOTOR_I2C_ADDR 0x10
 #endif
 
 // 旋转锁定

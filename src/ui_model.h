@@ -18,6 +18,7 @@
 #include "focus_module.h"
 #include "settings_module.h"
 #include "what2eat_module.h"
+#include "component_test_module.h"
 
 #include <stdint.h>
 
@@ -199,6 +200,20 @@ struct UiSettingsProps {
     const char* dangerHint = "";
 };
 
+struct UiComponentTestRowProps {
+    char name[24] = {};
+    char execution[16] = {};
+    char content[48] = {};
+    char result[32] = {};
+    bool selected = false;
+};
+
+struct UiComponentTestProps {
+    UiComponentTestRowProps rows[COMPONENT_TEST_MAX_ROWS];
+    uint8_t rowCount = 0;
+    uint8_t selectedIndex = 0;
+};
+
 struct UiLandscapeOverviewProps {
     uint8_t aiTotalPercent = 0;
     const char* minimaxText = "";
@@ -301,6 +316,7 @@ struct UiModel {
     UiWhat2EatProps what2eat;
     UiEnvironmentProps environment;
     UiSettingsProps settings;
+    UiComponentTestProps componentTest;
     UiLandscapeOverviewProps landscapeOverview;
     UiFocusProps focus;
     UiCustomProps customPage;
@@ -347,6 +363,8 @@ struct UiModelInputs {
     // Optional home-focus signal owned by the what2eat flow.
     bool what2eatChoicePending = false;
 
+    ComponentTestSnapshot componentTest = {};
+
     ShakePhase shakePhase = SHAKE_PHASE_IDLE;
     int8_t shakeDirection = 0;
 };
@@ -377,6 +395,7 @@ inline ScreenMode dn_screen_mode_for_page(UIPage p) {
         case PAGE_PORTRAIT_OVERVIEW:    return SCREEN_PORTRAIT_OVERVIEW;
         case PAGE_PORTRAIT_AI_USAGE:
         case PAGE_PORTRAIT_WHAT2EAT:
+        case PAGE_PORTRAIT_COMPONENT_TEST:
         case PAGE_PORTRAIT_ENVIRONMENT:
         case PAGE_PORTRAIT_SETTINGS:    return SCREEN_PORTRAIT_DETAIL;
         case PAGE_LANDSCAPE_OVERVIEW:   return SCREEN_LANDSCAPE_OVERVIEW;
@@ -463,6 +482,26 @@ inline UiSettingsRowProps dn_settings_row(const SettingsRowStatus& src) {
     row.value = src.value;
     row.selectable = src.selectable;
     return row;
+}
+
+inline void dn_apply_component_test_snapshot(UiModel& model,
+                                              const ComponentTestSnapshot& snapshot) {
+    model.componentTest = {};
+    model.componentTest.rowCount = snapshot.rowCount > COMPONENT_TEST_MAX_ROWS
+        ? COMPONENT_TEST_MAX_ROWS
+        : snapshot.rowCount;
+    model.componentTest.selectedIndex = snapshot.selectedIndex < COMPONENT_TEST_MAX_ROWS
+        ? snapshot.selectedIndex
+        : 0;
+    for (uint8_t i = 0; i < model.componentTest.rowCount; ++i) {
+        const ComponentTestRow& src = snapshot.rows[i];
+        UiComponentTestRowProps& dst = model.componentTest.rows[i];
+        snprintf(dst.name, sizeof(dst.name), "%s", src.name);
+        snprintf(dst.execution, sizeof(dst.execution), "%s", src.execution);
+        snprintf(dst.content, sizeof(dst.content), "%s", src.content);
+        snprintf(dst.result, sizeof(dst.result), "%s", src.result);
+        dst.selected = i == model.componentTest.selectedIndex;
+    }
 }
 
 inline UiCustomCardProps dn_custom_card(const char* label,
@@ -575,6 +614,13 @@ inline UiModel dn_build_ui_model_from_inputs(const UiModelInputs& in) {
     m.nav.backLabel = "Back";
     m.nav.selectLabel = "Select";
 
+    if (s.page == PAGE_PORTRAIT_COMPONENT_TEST) {
+        m.footer.leftHint = "[A] Select";
+        m.footer.rightHint = "[B] Run";
+        m.nav.nextLabel = "Select";
+        m.nav.prevLabel = "Run";
+    }
+
     m.status.systemText = dn_system_text(s.system);
     m.status.orientationText = dn_orientation_text(s.orientation);
     m.status.wifiText = "WiFi --";
@@ -635,6 +681,8 @@ inline UiModel dn_build_ui_model_from_inputs(const UiModelInputs& in) {
     }
     m.settings.selectedIndex = settingsStatus.selectedIndex;
     m.settings.dangerHint = settingsStatus.dangerHint;
+
+    dn_apply_component_test_snapshot(m, in.componentTest);
 
     m.landscapeOverview.aiTotalPercent = m.aiUsage.totalPercent;
     m.landscapeOverview.minimaxText = "MiniMax OK";

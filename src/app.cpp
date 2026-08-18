@@ -17,6 +17,7 @@
 #include "ai_usage_module.h"
 #include "boot_splash.h"
 #include "what2eat_module.h"
+#include "component_test_module.h"
 
 #include <Arduino.h>
 #include <esp_log.h>
@@ -36,6 +37,8 @@ namespace {
 
 constexpr uint32_t HEARTBEAT_INTERVAL_MS = 1000;
 constexpr uint32_t BOOT_REMOTE_STACK_BYTES = 8192;
+constexpr bool BOOT_PRECHECKS_SKIPPED =
+    DESKNEST_BOOT_SKIP_PRECHECKS || DESKNEST_OFFLINE_MODE;
 
 const char* gesture_event_name(GestureEvent event) {
     switch (event) {
@@ -284,6 +287,17 @@ void boot_step(uint32_t now) {
             g_boot_phase = BOOT_INIT_START_REMOTE;
             break;
         case BOOT_INIT_START_REMOTE:
+#if DESKNEST_OFFLINE_MODE
+            Serial.println("[D][BOOT] offline test profile: remote checks skipped");
+            dn_ai_usage_service_begin();
+            dn_what2eat_begin();
+            {
+                BootRemoteStatus offline{};
+                offline.started = true;
+                offline.ready = true;
+                boot_remote_publish(offline);
+            }
+#else
             if (!boot_remote_snapshot().started) {
                 Serial.println("[D][BOOT] step remote task");
                 boot_remote_publish({});
@@ -295,20 +309,23 @@ void boot_step(uint32_t now) {
                                         &g_boot_remote_task,
                                         0);
             }
+#endif
             g_boot_phase = BOOT_INIT_WAIT_REMOTE;
             break;
         case BOOT_INIT_WAIT_REMOTE: {
             const BootRemoteStatus remote = boot_remote_snapshot();
+            const bool boot_failed = !BOOT_PRECHECKS_SKIPPED && remote.failed;
             dn_boot_splash_update(now,
                                   g_boot_k10_ready,
                                   remote.wifiReady,
                                   remote.timeReady,
                                   remote.aiReady,
-                                  remote.failed,
-                                  remote.failureReason);
-            if (remote.ready && !dn_boot_splash_active()) {
+                                  boot_failed,
+                                  boot_failed ? remote.failureReason : BOOT_FAIL_NONE,
+                                  BOOT_PRECHECKS_SKIPPED);
+            if ((BOOT_PRECHECKS_SKIPPED || remote.ready) && !dn_boot_splash_active()) {
                 g_boot_phase = BOOT_INIT_DONE;
-            } else if (remote.failed) {
+            } else if (boot_failed) {
                 g_boot_phase = BOOT_INIT_FAILED;
             }
             return;
@@ -343,6 +360,7 @@ void dn_app_setup() {
     Serial.println("[D][BOOT] P0-B0: bootstrap K10 BSP...");
     desknest::dn_k10_bootstrap();
     desknest::g_boot_k10_ready = desknest::dn_k10_bootstrap_ready();
+    desknest::dn_component_test_begin();
 
     desknest::dn_boot_splash_begin(millis());
 
@@ -364,7 +382,9 @@ void dn_app_loop() {
         dn_ui_render();
         if (g_boot_phase == BOOT_INIT_DONE && g_state.snapshot().system == SYSTEM_BOOT) {
             g_state.forceSystem(SYSTEM_ACTIVE);
-            g_state.forcePage(PAGE_PORTRAIT_OVERVIEW);
+            g_state.forcePage(DESKNEST_TEST_PAGE_ONLY
+                ? PAGE_PORTRAIT_COMPONENT_TEST
+                : PAGE_PORTRAIT_OVERVIEW);
             g_state.notifyInput();
             Serial.println("[D][BOOT] init complete -> ACTIVE");
         } else if (g_boot_phase == BOOT_INIT_FAILED && g_state.snapshot().system == SYSTEM_BOOT) {
@@ -415,6 +435,11 @@ void dn_app_loop() {
     // 4) 状态机
     const OrientationState detected = g_gesture.orientation();
     g_state.update(g, b, detected, now);
+    // The button handler may start a component test and stamp its first
+    // action with a later millis() value. Use a fresh timestamp here so the
+    // first non-blocking wait cannot underflow and fire the next stage in the
+    // same loop.
+    dn_component_test_tick(millis());
 
     // Face-down is a distinct product page, not idle screen-off. Only the
     // ordinary LIGHT_SLEEP state blanks the LCD backlight.

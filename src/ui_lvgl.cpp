@@ -626,7 +626,7 @@ static void chrome_build() {
         LV_SYMBOL_HOME,
         LV_SYMBOL_CHARGE,
         LV_SYMBOL_LIST,
-        LV_SYMBOL_SETTINGS,
+        LV_SYMBOL_USB,
         LV_SYMBOL_SETTINGS,
     };
     for (int i = 0; i < 5; ++i) {
@@ -668,6 +668,9 @@ static void chrome_update(const UiModel& m) {
     }
     if (m.view.page == PAGE_PORTRAIT_WHAT2EAT) {
         snprintf(title_buf, sizeof(title_buf), "B pick");
+    }
+    if (m.view.page == PAGE_PORTRAIT_COMPONENT_TEST) {
+        snprintf(title_buf, sizeof(title_buf), "A select  B run");
     }
     if (m.view.page == PAGE_PORTRAIT_SETTINGS) {
         snprintf(title_buf, sizeof(title_buf), "A select  B switch");
@@ -1490,6 +1493,92 @@ static void update_settings(const UiModel& m) {
     }
 }
 
+static lv_obj_t* make_component_test_line(lv_obj_t* row,
+                                          lv_obj_t** left_out,
+                                          lv_obj_t** right_out) {
+    lv_obj_t* line = lv_obj_create(row);
+    plain(line);
+    lv_obj_set_size(line, 210, 23);
+    lv_obj_set_flex_flow(line, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(line, LV_FLEX_ALIGN_START,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    lv_obj_t* left = make_label(line, &sty_text16);
+    lv_obj_set_width(left, 130);
+    lv_obj_set_style_text_align(left, LV_TEXT_ALIGN_LEFT, 0);
+
+    lv_obj_t* right = make_label(line, &sty_text16);
+    lv_obj_set_width(right, 80);
+    lv_obj_set_style_text_align(right, LV_TEXT_ALIGN_RIGHT, 0);
+
+    if (left_out) *left_out = left;
+    if (right_out) *right_out = right;
+    return line;
+}
+
+static uint32_t component_test_result_color(const char* text) {
+    if (!text || !text[0] || strcmp(text, "—") == 0) return C_DIM;
+    if (strcmp(text, "测试中") == 0 || strcmp(text, "执行中") == 0 ||
+        strcmp(text, "检测中") == 0 || strcmp(text, "监听中") == 0) return C_SAND;
+    if (strcmp(text, "PASS") == 0 || strcmp(text, "已执行") == 0 ||
+        strcmp(text, "已收到") == 0) return C_BRAND;
+    if (strcmp(text, "FAIL") == 0 || strcmp(text, "无信号") == 0 ||
+        strcmp(text, "中止") == 0) return C_ALERT;
+    return C_LABEL;
+}
+
+static void build_component_test() {
+    PageObjects& po = page_objects(PAGE_PORTRAIT_COMPONENT_TEST);
+    if (po.built) return;
+    lv_obj_t* root = make_page_root(PAGE_PORTRAIT_COMPONENT_TEST);
+    for (int i = 0; i < COMPONENT_TEST_MAX_ROWS; ++i) {
+        lv_obj_t* row = lv_obj_create(root);
+        plain(row);
+        lv_obj_set_size(row, 220, 58);
+        lv_obj_set_flex_flow(row, LV_FLEX_FLOW_COLUMN);
+        lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START,
+                              LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+        lv_obj_set_style_pad_all(row, 5, 0);
+        lv_obj_set_style_pad_gap(row, 0, 0);
+        lv_obj_set_style_radius(row, 3, 0);
+        lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+        po.rows[i] = row;
+
+        const int base = i * 4;
+        make_component_test_line(row, &po.labels[base], &po.labels[base + 1]);
+        make_component_test_line(row, &po.labels[base + 2], &po.labels[base + 3]);
+        lv_obj_set_style_text_color(po.labels[base + 2], lv_color_hex(C_LABEL), 0);
+    }
+    po.built = true;
+}
+
+static void update_component_test(const UiModel& m) {
+    PageObjects& po = page_objects(PAGE_PORTRAIT_COMPONENT_TEST);
+    uint8_t n = m.componentTest.rowCount;
+    if (n > COMPONENT_TEST_MAX_ROWS) n = COMPONENT_TEST_MAX_ROWS;
+
+    for (int i = 0; i < COMPONENT_TEST_MAX_ROWS; ++i) {
+        const int base = i * 4;
+        if (i >= n) {
+            lv_obj_add_flag(po.rows[i], LV_OBJ_FLAG_HIDDEN);
+            continue;
+        }
+        const UiComponentTestRowProps& item = m.componentTest.rows[i];
+        lv_obj_clear_flag(po.rows[i], LV_OBJ_FLAG_HIDDEN);
+        set_text(po.labels[base], item.name);
+        set_text(po.labels[base + 1], item.execution);
+        set_text(po.labels[base + 2], item.content);
+        set_text(po.labels[base + 3], item.result);
+        lv_obj_set_style_bg_opa(po.rows[i],
+                                item.selected ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+        lv_obj_set_style_bg_color(po.rows[i], lv_color_hex(C_CARD_HI), 0);
+        lv_obj_set_style_text_color(po.labels[base + 1],
+                                    lv_color_hex(component_test_result_color(item.execution)), 0);
+        lv_obj_set_style_text_color(po.labels[base + 3],
+                                    lv_color_hex(component_test_result_color(item.result)), 0);
+    }
+}
+
 static void build_face_down() {
     PageObjects& po = page_objects(PAGE_SLEEP_FACE_DOWN);
     if (po.built) return;
@@ -1569,6 +1658,7 @@ static void build_page(UIPage page) {
         case PAGE_PORTRAIT_OVERVIEW:    build_overview(); break;
         case PAGE_PORTRAIT_AI_USAGE:    build_ai_usage(); break;
         case PAGE_PORTRAIT_WHAT2EAT:    build_what2eat(); break;
+        case PAGE_PORTRAIT_COMPONENT_TEST: build_component_test(); break;
         case PAGE_PORTRAIT_ENVIRONMENT: build_environment(); break;
         case PAGE_PORTRAIT_SETTINGS:    build_settings(); break;
         case PAGE_SLEEP_FACE_DOWN:      build_face_down(); break;
@@ -1583,6 +1673,7 @@ static UIPage normalized_page(UIPage page) {
         case PAGE_PORTRAIT_OVERVIEW:
         case PAGE_PORTRAIT_AI_USAGE:
         case PAGE_PORTRAIT_WHAT2EAT:
+        case PAGE_PORTRAIT_COMPONENT_TEST:
         case PAGE_PORTRAIT_ENVIRONMENT:
         case PAGE_PORTRAIT_SETTINGS:
         case PAGE_SLEEP_FACE_DOWN:
@@ -1611,6 +1702,7 @@ static void update_page(const UiModel& m) {
         case PAGE_PORTRAIT_OVERVIEW:    update_overview(m); break;
         case PAGE_PORTRAIT_AI_USAGE:    update_ai_usage(m); break;
         case PAGE_PORTRAIT_WHAT2EAT:    update_what2eat(m); break;
+        case PAGE_PORTRAIT_COMPONENT_TEST: update_component_test(m); break;
         case PAGE_PORTRAIT_ENVIRONMENT: update_environment(m); break;
         case PAGE_PORTRAIT_SETTINGS:    update_settings(m); break;
         case PAGE_SLEEP_FACE_DOWN:      update_face_down(m); break;

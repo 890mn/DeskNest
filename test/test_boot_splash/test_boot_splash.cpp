@@ -41,6 +41,20 @@ void test_boot_splash_reports_visual_progress_before_ready() {
     TEST_ASSERT_LESS_THAN_UINT8(100, status.progressPct);
 }
 
+void test_boot_splash_can_skip_remote_prechecks() {
+    dn_boot_splash_begin(1000);
+    dn_boot_splash_update(1500, true, false, false, false,
+                          false, BOOT_FAIL_NONE, true);
+
+    const BootSplashStatus status = dn_boot_splash_status();
+    TEST_ASSERT_TRUE(status.active);
+    TEST_ASSERT_TRUE(status.prechecksSkipped);
+    TEST_ASSERT_TRUE(status.ready);
+    TEST_ASSERT_FALSE(status.wifiReady);
+    TEST_ASSERT_FALSE(status.timeReady);
+    TEST_ASSERT_FALSE(status.aiReady);
+}
+
 void test_boot_splash_finishes_immediately_after_all_tasks_ready() {
     dn_boot_splash_begin(1000);
     dn_boot_splash_update(4000, true, true, true, true);
@@ -78,6 +92,7 @@ int main(int argc, char **argv) {
     RUN_TEST(test_boot_splash_stays_visible_before_fade);
     RUN_TEST(test_boot_splash_waits_for_all_tasks_even_after_min_hold);
     RUN_TEST(test_boot_splash_reports_visual_progress_before_ready);
+    RUN_TEST(test_boot_splash_can_skip_remote_prechecks);
     RUN_TEST(test_boot_splash_finishes_immediately_after_all_tasks_ready);
     RUN_TEST(test_boot_splash_finishes_after_total_window);
     RUN_TEST(test_boot_splash_hides_and_marks_failure);

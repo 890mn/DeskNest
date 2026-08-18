@@ -30,6 +30,7 @@ static const PageDef DN_PAGE_REGISTRY[] = {
     { PAGE_PORTRAIT_OVERVIEW,    PAGE_GROUP_PORTRAIT,  "DeskNest",    true  },
     { PAGE_PORTRAIT_AI_USAGE,    PAGE_GROUP_PORTRAIT,  "AI Left",     true  },
     { PAGE_PORTRAIT_WHAT2EAT,    PAGE_GROUP_PORTRAIT,  "what2eat",    true  },
+    { PAGE_PORTRAIT_COMPONENT_TEST, PAGE_GROUP_PORTRAIT, "Component Test", true  },
     { PAGE_PORTRAIT_SETTINGS,    PAGE_GROUP_PORTRAIT,  "Settings",    true  },
 
     // Reserved for future boot-time landscape initialization mode.
@@ -58,6 +59,7 @@ inline const char* dn_page_title_from_registry(UIPage page) {
 }
 
 inline uint8_t dn_page_group_count(PageGroup group) {
+    if (DESKNEST_TEST_PAGE_ONLY && group == PAGE_GROUP_PORTRAIT) return 1;
     uint8_t count = 0;
     for (uint8_t i = 0; i < DN_PAGE_REGISTRY_COUNT; ++i) {
         if (DN_PAGE_REGISTRY[i].group == group) ++count;
@@ -66,6 +68,9 @@ inline uint8_t dn_page_group_count(PageGroup group) {
 }
 
 inline UIPage dn_first_page_in_group(PageGroup group) {
+    if (DESKNEST_TEST_PAGE_ONLY && group == PAGE_GROUP_PORTRAIT) {
+        return PAGE_PORTRAIT_COMPONENT_TEST;
+    }
     for (uint8_t i = 0; i < DN_PAGE_REGISTRY_COUNT; ++i) {
         if (DN_PAGE_REGISTRY[i].group == group) return DN_PAGE_REGISTRY[i].id;
     }
@@ -73,6 +78,9 @@ inline UIPage dn_first_page_in_group(PageGroup group) {
 }
 
 inline int8_t dn_index_in_group(PageGroup group, UIPage page) {
+    if (DESKNEST_TEST_PAGE_ONLY && group == PAGE_GROUP_PORTRAIT) {
+        return page == PAGE_PORTRAIT_COMPONENT_TEST ? 0 : -1;
+    }
     int8_t index = 0;
     for (uint8_t i = 0; i < DN_PAGE_REGISTRY_COUNT; ++i) {
         if (DN_PAGE_REGISTRY[i].group != group) continue;
@@ -83,6 +91,10 @@ inline int8_t dn_index_in_group(PageGroup group, UIPage page) {
 }
 
 inline UIPage dn_page_at_group_index(PageGroup group, uint8_t index) {
+    if (DESKNEST_TEST_PAGE_ONLY && group == PAGE_GROUP_PORTRAIT) {
+        (void)index;
+        return PAGE_PORTRAIT_COMPONENT_TEST;
+    }
     uint8_t seen = 0;
     for (uint8_t i = 0; i < DN_PAGE_REGISTRY_COUNT; ++i) {
         if (DN_PAGE_REGISTRY[i].group != group) continue;

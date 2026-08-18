@@ -8,6 +8,7 @@
 #include "settings_module.h"
 #include "device_settings.h"
 #include "what2eat_module.h"
+#include "component_test_module.h"
 
 #include <Arduino.h>
 
@@ -15,6 +16,15 @@ namespace desknest {
 
 StateMachine g_state;
 static bool g_gesture_confirm_enabled = true;
+
+// Native state-machine tests include this translation unit directly and do
+// not link the hardware adapter.  Firmware links the strong implementations
+// from component_test_module.cpp; these weak no-ops keep the state contract
+// independently testable.
+void __attribute__((weak)) dn_component_test_select_next() {}
+void __attribute__((weak)) dn_component_test_execute() {}
+void __attribute__((weak)) dn_component_test_abort() {}
+bool __attribute__((weak)) dn_component_test_is_running() { return false; }
 
 bool StateMachine::gestureConfirmEnabled() const {
     return g_gesture_confirm_enabled;
@@ -77,7 +87,11 @@ void StateMachine::begin() {
     _s.system        = SYSTEM_BOOT;
     _s.face_state    = FACE_STATE_UP;        // 显式：开机默认 face_up
     _s.orientation   = ORIENTATION_PORTRAIT;
+#if DESKNEST_TEST_PAGE_ONLY
+    _s.page          = PAGE_PORTRAIT_COMPONENT_TEST;
+#else
     _s.page          = PAGE_PORTRAIT_OVERVIEW;
+#endif
     _s.rotLock       = ROT_AUTO;
     _s.lastInputMs   = millis();
     _temp_unlock_expire_ms = 0;
@@ -99,9 +113,17 @@ void StateMachine::begin() {
 // 后调的覆盖前面的（同字段写）。用户可在 platformio.ini 关掉任意一路。
 
 void StateMachine::applyFace_(GestureEvent face, uint32_t now_ms) {
+#if DESKNEST_TEST_PAGE_ONLY
+    (void)face;
+    (void)now_ms;
+    return;
+#endif
     if (face == GESTURE_FACE_DOWN) {
         // 已 face-down 还来 face-down = 加速度计噪声，无视
         if (_s.face_state == FACE_STATE_DOWN) return;
+        if (_s.page == PAGE_PORTRAIT_COMPONENT_TEST) {
+            dn_component_test_abort();
+        }
         _s.pre_face_down_page = _s.page;
         _s.face_state = FACE_STATE_DOWN;
         _s.orientation = ORIENTATION_FACE_DOWN;
@@ -173,6 +195,20 @@ void StateMachine::updateButton(ButtonEvent b, uint32_t now_ms) {
         const bool picked = dn_what2eat_pick();
         Serial.printf("[D][W2E] B pick %s\n", picked ? "ok" : "ignored-empty");
         return;
+    }
+    if (_s.page == PAGE_PORTRAIT_COMPONENT_TEST) {
+        if (b == BUTTON_NEXT) {
+            dn_component_test_select_next();
+            return;
+        }
+        if (b == BUTTON_PREV) {
+            dn_component_test_execute();
+            return;
+        }
+#if DESKNEST_TEST_PAGE_ONLY
+        dn_component_test_abort();
+        return;
+#endif
     }
     if (_s.page == PAGE_PORTRAIT_SETTINGS) {
         if (b == BUTTON_NEXT) {
@@ -270,6 +306,10 @@ void StateMachine::applyButton_(ButtonEvent b, uint32_t now_ms) {
     if (_s.system == SYSTEM_AMBIENT || _s.system == SYSTEM_LIGHT_SLEEP) {
         _s.system = SYSTEM_ACTIVE;
     }
+    if (_s.page == PAGE_PORTRAIT_COMPONENT_TEST &&
+        (b == BUTTON_BACK || b == BUTTON_MENU || b == BUTTON_FACTORY)) {
+        dn_component_test_abort();
+    }
 
     switch (b) {
         case BUTTON_NEXT: {
@@ -338,6 +378,11 @@ void StateMachine::applyButton_(ButtonEvent b, uint32_t now_ms) {
 // ============================================================================
 
 void StateMachine::applyGesture_(GestureEvent g, uint32_t now_ms) {
+#if DESKNEST_TEST_PAGE_ONLY
+    (void)g;
+    (void)now_ms;
+    return;
+#endif
     _s.lastInputMs = now_ms;
     if (_s.system == SYSTEM_AMBIENT || _s.system == SYSTEM_LIGHT_SLEEP) {
         _s.system = SYSTEM_ACTIVE;
@@ -345,6 +390,13 @@ void StateMachine::applyGesture_(GestureEvent g, uint32_t now_ms) {
 
     switch (g) {
         case GESTURE_SHAKE_LEFT: {
+            if (_s.page == PAGE_PORTRAIT_COMPONENT_TEST) {
+                if (dn_component_test_is_running()) {
+                    Serial.println("[D][STATE] shake ignored during component test");
+                    break;
+                }
+                dn_component_test_abort();
+            }
             if (_s.orientation == ORIENTATION_LANDSCAPE) {
                 _s.page = prevLandscape(_s.page);
             } else {
@@ -354,6 +406,13 @@ void StateMachine::applyGesture_(GestureEvent g, uint32_t now_ms) {
             break;
         }
         case GESTURE_SHAKE_RIGHT: {
+            if (_s.page == PAGE_PORTRAIT_COMPONENT_TEST) {
+                if (dn_component_test_is_running()) {
+                    Serial.println("[D][STATE] shake ignored during component test");
+                    break;
+                }
+                dn_component_test_abort();
+            }
             if (_s.orientation == ORIENTATION_LANDSCAPE) {
                 _s.page = nextLandscape(_s.page);
             } else {
@@ -387,6 +446,11 @@ void StateMachine::applyGesture_(GestureEvent g, uint32_t now_ms) {
 // ============================================================================
 
 void StateMachine::applyOrientation_(OrientationState detected, uint32_t now_ms) {
+#if DESKNEST_TEST_PAGE_ONLY
+    (void)detected;
+    (void)now_ms;
+    return;
+#endif
     // 当前 MVP 不做运行时横竖屏动态切换。orientation 检测仍可供调试/后期
     // boot-time landscape adapter 使用，但不在主状态机里改变 page。
     (void)detected;
@@ -398,6 +462,10 @@ void StateMachine::applyOrientation_(OrientationState detected, uint32_t now_ms)
 // ============================================================================
 
 void StateMachine::applyPowerTimeout_(uint32_t now_ms) {
+#if DESKNEST_TEST_PAGE_ONLY
+    (void)now_ms;
+    return;
+#endif
     if (_s.system == SYSTEM_FACE_DOWN_SLEEP) return;
     if (_s.system == SYSTEM_CONFIG) return;
 

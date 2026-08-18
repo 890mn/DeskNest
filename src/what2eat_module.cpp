@@ -349,6 +349,9 @@ void dn_what2eat_begin() {
 }
 
 void dn_what2eat_tick() {
+#if DESKNEST_OFFLINE_MODE
+    return;
+#endif
     const uint32_t now = millis();
     if ((s_last_sync_ms != 0 && now - s_last_sync_ms < kSyncIntervalMs) ||
         WiFi.status() != WL_CONNECTED) return;

@@ -37,6 +37,7 @@ UiModel dn_build_ui_model() {
     UiModelInputs in = {};
     in.state = g_state.snapshot();
     in.nowMs = millis();
+    in.componentTest = dn_component_test_snapshot();
 
     const auto aht = g_sensors.aht20();
     in.temperatureValid = aht.valid;

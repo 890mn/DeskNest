@@ -30,7 +30,8 @@ void dn_boot_splash_update(uint32_t now_ms,
                            bool timeReady,
                            bool aiReady,
                            bool failed,
-                           BootFailureReason failureReason) {
+                           BootFailureReason failureReason,
+                           bool skipPrechecks) {
     if (!s_started) dn_boot_splash_begin(now_ms);
 
     s_status.k10Ready = k10Ready;
@@ -38,10 +39,11 @@ void dn_boot_splash_update(uint32_t now_ms,
     s_status.timeReady = timeReady;
     s_status.aiReady = aiReady;
     s_status.failed = failed;
+    s_status.prechecksSkipped = skipPrechecks;
     s_status.failureReason = failureReason;
 
     const uint32_t elapsed = now_ms >= s_started_at_ms ? (now_ms - s_started_at_ms) : 0;
-    const bool all_ready = k10Ready && wifiReady && timeReady && aiReady;
+    const bool all_ready = skipPrechecks || (k10Ready && wifiReady && timeReady && aiReady);
     s_status.ready = all_ready;
     s_status.progressPct = (uint8_t)((elapsed >= kBootVisualMs) ? 96 : ((elapsed * 96U) / kBootVisualMs));
 

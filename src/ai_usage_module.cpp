@@ -353,6 +353,23 @@ AIWiFiStatus dn_ai_usage_wifi_status() {
 
 void dn_ai_usage_service_begin() {
     ensure_state_mutex();
+#if DESKNEST_OFFLINE_MODE
+    {
+        StateLock lock;
+        if (lock.locked()) {
+            s_cached = dn_ai_usage_demo_status();
+            s_loaded_once = true;
+            s_data_ready = true;
+            s_live_data_ready = false;
+            s_last_load_ms = millis();
+            s_wifi_working = {};
+            s_wifi_status = {};
+            s_published_time = {};
+        }
+    }
+    Serial.println("[D][AI] offline mode: demo snapshot, network disabled");
+    return;
+#endif
     const uint32_t now = millis();
     ensure_wifi_station_started();
     refresh_wifi_link(now, true);
@@ -360,6 +377,9 @@ void dn_ai_usage_service_begin() {
 }
 
 void dn_ai_usage_service_tick() {
+#if DESKNEST_OFFLINE_MODE
+    return;
+#endif
     // Network calls can block for seconds. Keep them entirely outside the
     // snapshot mutex so the main loop can continue sampling input and pumping
     // LVGL; only the small state copies below take StateLock.

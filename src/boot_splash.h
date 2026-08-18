@@ -20,6 +20,7 @@ struct BootSplashStatus {
     bool aiReady = false;
     bool ready = false;
     bool failed = false;
+    bool prechecksSkipped = false;
     BootFailureReason failureReason = BOOT_FAIL_NONE;
     uint8_t progressPct = 0;
     uint8_t fadePct = 0;
@@ -32,7 +33,8 @@ void dn_boot_splash_update(uint32_t now_ms,
                            bool timeReady,
                            bool aiReady,
                            bool failed = false,
-                           BootFailureReason failureReason = BOOT_FAIL_NONE);
+                           BootFailureReason failureReason = BOOT_FAIL_NONE,
+                           bool skipPrechecks = false);
 BootSplashStatus dn_boot_splash_status();
 bool dn_boot_splash_active();
 

@@ -100,7 +100,14 @@ public:
     bool gestureConfirmEnabled() const;
 
     // 强控（SETTINGS / 工厂复位用）
-    void forcePage(UIPage p)               { _s.page = p; }
+    void forcePage(UIPage p)               {
+#if DESKNEST_TEST_PAGE_ONLY
+        (void)p;
+        _s.page = PAGE_PORTRAIT_COMPONENT_TEST;
+#else
+        _s.page = p;
+#endif
+    }
     void forceSystem(SystemState s)        { _s.system = s; _s.lastInputMs = millis(); }
     void forceRotLock(RotationLock r)      { _s.rotLock = r; }
     void notifyInput()                     { _s.lastInputMs = millis(); }
